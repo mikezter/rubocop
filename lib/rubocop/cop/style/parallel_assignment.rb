@@ -29,30 +29,43 @@ module RuboCop
         MSG = 'Do not use parallel assignment.'.freeze
 
         def on_masgn(node)
-          left, right = *node
-          left_elements = *left
-          right_elements = [*right].compact # edge case for one constant
+          lhs, rhs = *node
+          lhs_elements = *lhs
+          rhs_elements = [*rhs].compact # edge case for one constant
 
-          # only complain when the number of variables matches
-          return if left_elements.size != right_elements.size
-
-          # account for edge cases using one variable with a comma
-          return if left_elements.size == 1
-
-          # account for edge case of Constant::CONSTANT
-          return unless right.array_type?
-
-          # allow mass assignment as the return of a method call
-          return if right.block_type? || right.send_type?
-
-          # allow mass assignment when using splat
-          return if (left_elements + right_elements).any?(&:splat_type?)
-
-          order = find_valid_order(left_elements, right_elements)
-          # For `a, b = b, a` or similar, there is no valid order
-          return if order.nil?
+          return if allowed_lhs?(lhs) || allowed_rhs?(rhs) ||
+                    allowed_masign?(lhs_elements, rhs_elements)
 
           add_offense(node, :expression)
+        end
+
+        private
+
+        def allowed_masign?(lhs_elements, rhs_elements)
+          lhs_elements.size != rhs_elements.size ||
+            !find_valid_order(lhs_elements, rhs_elements)
+        end
+
+        def allowed_lhs?(node)
+          elements = *node
+
+          # Account for edge cases using one variable with a comma
+          # E.g.: `foo, = *bar`
+          elements.one? || elements.any?(&:splat_type?)
+        end
+
+        def allowed_rhs?(node)
+          # Edge case for one constant
+          elements = [*node].compact
+
+          # Account for edge case of `Constant::CONSTANT`
+          !node.array_type? ||
+            return_of_method_call?(node) ||
+            elements.any?(&:splat_type?)
+        end
+
+        def return_of_method_call?(node)
+          node.block_type? || node.send_type?
         end
 
         def autocorrect(node)
@@ -61,22 +74,22 @@ module RuboCop
             left_elements = *left
             right_elements = [*right].compact
             order = find_valid_order(left_elements, right_elements)
+            correction = assignment_corrector(node, order)
 
-            assignment_corrector =
-              if modifier_statement?(node.parent)
-                ModifierCorrector.new(node, config, order)
-              elsif rescue_modifier?(node.parent)
-                RescueCorrector.new(node, config, order)
-              else
-                GenericCorrector.new(node, config, order)
-              end
-
-            corrector.replace(assignment_corrector.correction_range,
-                              assignment_corrector.correction)
+            corrector.replace(correction.correction_range,
+                              correction.correction)
           end
         end
 
-        private
+        def assignment_corrector(node, order)
+          if modifier_statement?(node.parent)
+            ModifierCorrector.new(node, config, order)
+          elsif rescue_modifier?(node.parent)
+            RescueCorrector.new(node, config, order)
+          else
+            GenericCorrector.new(node, config, order)
+          end
+        end
 
         def find_valid_order(left_elements, right_elements)
           # arrange left_elements in an order such that no corresponding right
@@ -147,13 +160,13 @@ module RuboCop
         def modifier_while?(node)
           node.loc.respond_to?(:keyword) &&
             %w(while until).include?(node.loc.keyword.source) &&
-            node.loc.respond_to?(:end) && node.loc.end.nil?
+            node.modifier_form?
         end
 
         def rescue_modifier?(node)
-          node &&
-            node.rescue_type? &&
-            (node.parent.nil? || !node.parent.kwbegin_type?)
+          node && node.rescue_type? &&
+            (node.parent.nil? || !(node.parent.kwbegin_type? ||
+            node.parent.ensure_type?))
         end
 
         # An internal class for correcting parallel assignment
@@ -179,12 +192,20 @@ module RuboCop
           protected
 
           def assignment
-            @new_elements.map do |lhs, rhs|
-              "#{lhs.source} = #{rhs.source}"
-            end
+            @new_elements.map { |lhs, rhs| "#{lhs.source} = #{source(rhs)}" }
           end
 
           private
+
+          def source(node)
+            if node.str_type? && node.loc.begin.nil?
+              "'#{node.source}'"
+            elsif node.sym_type? && node.loc.begin.nil?
+              ":#{node.source}"
+            else
+              node.source
+            end
+          end
 
           def extract_sources(node)
             node.children.map(&:source)
@@ -202,16 +223,34 @@ module RuboCop
             _node, rescue_clause = *node.parent
             _, _, rescue_result = *rescue_clause
 
+            # If the parallel assignment uses a rescue modifier and it is the
+            # only contents of a method, then we want to make use of the
+            # implicit begin
+            if node.parent.parent && node.parent.parent.def_type?
+              super + def_correction(rescue_result)
+            else
+              begin_correction(rescue_result)
+            end
+          end
+
+          def correction_range
+            node.parent.source_range
+          end
+
+          private
+
+          def def_correction(rescue_result)
+            "\nrescue" \
+              "\n#{offset(node)}#{rescue_result.source}"
+          end
+
+          def begin_correction(rescue_result)
             "begin\n" \
               "#{indentation(node)}" \
               "#{assignment.join("\n#{indentation(node)}")}" \
               "\n#{offset(node)}rescue\n" \
               "#{indentation(node)}#{rescue_result.source}" \
               "\n#{offset(node)}end"
-          end
-
-          def correction_range
-            node.parent.source_range
           end
         end
 

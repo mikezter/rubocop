@@ -6,9 +6,16 @@ module RuboCop
   # and provides a way to check if each cop is enabled at arbitrary line.
   class CommentConfig
     UNNEEDED_DISABLE = 'Lint/UnneededDisable'.freeze
+
+    COP_NAME_PATTERN = '([A-Z]\w+/)?(?:[A-Z]\w+)'.freeze
+    COP_NAMES_PATTERN = "(?:#{COP_NAME_PATTERN} , )*#{COP_NAME_PATTERN}".freeze
+    COPS_PATTERN = "(all|#{COP_NAMES_PATTERN})".freeze
+
     COMMENT_DIRECTIVE_REGEXP = Regexp.new(
-      '\A# rubocop : ((?:dis|en)able)\b ((?:[\w/]+,? )+)'.gsub(' ', '\s*')
+      ('\A# rubocop : ((?:dis|en)able)\b ' + COPS_PATTERN).gsub(' ', '\s*')
     )
+
+    CopAnalysis = Struct.new(:line_ranges, :start_line_number)
 
     attr_reader :processed_source
 
@@ -19,6 +26,8 @@ module RuboCop
     def cop_enabled_at_line?(cop, line_number)
       cop = cop.cop_name if cop.respond_to?(:cop_name)
       disabled_line_ranges = cop_disabled_line_ranges[cop]
+      return true unless disabled_line_ranges
+
       disabled_line_ranges.none? { |range| range.include?(line_number) }
     end
 
@@ -29,31 +38,58 @@ module RuboCop
     private
 
     def analyze
-      disabled_line_ranges = Hash.new { |hash, key| hash[key] = [] }
-      disablement_start_line_numbers = {}
+      analyses = Hash.new { |hash, key| hash[key] = CopAnalysis.new([], nil) }
 
       each_mentioned_cop do |cop_name, disabled, line, single_line|
-        if single_line
-          disabled_line_ranges[cop_name] << (line..line) if disabled
-        elsif disabled
-          if disablement_start_line_numbers[cop_name]
-            # Cop already disabled on this line, so we end the current disabled
-            # range before we start a new range.
-            start_line = disablement_start_line_numbers.delete(cop_name)
-            disabled_line_ranges[cop_name] << (start_line..line)
-          end
-          disablement_start_line_numbers[cop_name] = line
-        else
-          start_line = disablement_start_line_numbers.delete(cop_name)
-          disabled_line_ranges[cop_name] << (start_line..line) if start_line
-        end
+        analyses[cop_name] =
+          analyze_cop(analyses[cop_name], disabled, line, single_line)
       end
 
-      disablement_start_line_numbers.each do |cop_name, start_line|
-        disabled_line_ranges[cop_name] << (start_line..Float::INFINITY)
+      analyses.each_with_object({}) do |element, hash|
+        cop_name, analysis = *element
+        hash[cop_name] = cop_line_ranges(analysis)
+      end
+    end
+
+    def analyze_cop(analysis, disabled, line, single_line)
+      if single_line
+        analyze_single_line(analysis, line, disabled)
+      elsif disabled
+        analyze_disabled(analysis, line)
+      else
+        analyze_rest(analysis, line)
+      end
+    end
+
+    def analyze_single_line(analysis, line, disabled)
+      return analysis unless disabled
+
+      CopAnalysis.new(analysis.line_ranges + [(line..line)],
+                      analysis.start_line_number)
+    end
+
+    def analyze_disabled(analysis, line)
+      if (start_line = analysis.start_line_number)
+        # Cop already disabled on this line, so we end the current disabled
+        # range before we start a new range.
+        return CopAnalysis.new(analysis.line_ranges + [start_line..line], line)
       end
 
-      disabled_line_ranges
+      CopAnalysis.new(analysis.line_ranges, line)
+    end
+
+    def analyze_rest(analysis, line)
+      if (start_line = analysis.start_line_number)
+        return CopAnalysis.new(analysis.line_ranges + [start_line..line], nil)
+      end
+
+      CopAnalysis.new(analysis.line_ranges, nil)
+    end
+
+    def cop_line_ranges(analysis)
+      return analysis.line_ranges unless analysis.start_line_number
+
+      analysis.line_ranges + [(analysis.start_line_number..Float::INFINITY)]
     end
 
     def each_mentioned_cop

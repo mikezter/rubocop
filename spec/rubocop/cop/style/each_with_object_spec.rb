@@ -23,6 +23,16 @@ describe RuboCop::Cop::Style::EachWithObject do
     expect(cop.highlights).to eq(%w(inject reduce))
   end
 
+  it 'correctly autocorrects' do
+    corrected = autocorrect_source(cop, ['[1, 2, 3].inject({}) do |h, i|',
+                                         '  h',
+                                         'end'])
+
+    expect(corrected).to eq(['[1, 2, 3].each_with_object({}) do |i, h|',
+                             '  h',
+                             'end'].join("\n"))
+  end
+
   it 'ignores inject and reduce with passed in, but not returned hash' do
     inspect_source(cop,
                    ['[].inject({}) do |a, e|',
@@ -73,7 +83,7 @@ describe RuboCop::Cop::Style::EachWithObject do
   end
 
   it 'ignores inject/reduce with assignment to accumulator param in block' do
-    inspect_source(cop, ['r = [1, 2, 3].reduce(0) do |memo, item|',
+    inspect_source(cop, ['r = [1, 2, 3].reduce({}) do |memo, item|',
                          '  memo += item > 2 ? item : 0',
                          '  memo',
                          'end'])
@@ -82,7 +92,7 @@ describe RuboCop::Cop::Style::EachWithObject do
 
   context 'when a simple literal is passed as initial value' do
     it 'ignores inject/reduce' do
-      inspect_source(cop, 'array.reduce(0) { 1 }')
+      inspect_source(cop, 'array.reduce(0) { |a, e| a }')
       expect(cop.offenses).to be_empty
     end
   end

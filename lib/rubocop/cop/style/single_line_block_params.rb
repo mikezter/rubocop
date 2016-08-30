@@ -12,7 +12,7 @@ module RuboCop
       class SingleLineBlockParams < Cop
         def on_block(node)
           # we care only for single line blocks
-          return unless block_length(node) == 0
+          return unless block_length(node).zero?
 
           method_node, args_node, _body_node = *node
           receiver, method_name, _method_args = *method_node
@@ -21,10 +21,11 @@ module RuboCop
           return unless receiver
           return unless method_names.include?(method_name)
 
-          # discard cases with argument destructuring
           args = *args_node
 
-          return true unless args.all? { |n| n.type == :arg }
+          return if args.empty?
+          # discard cases with argument destructuring
+          return true unless args.all?(&:arg_type?)
           return if args_match?(method_name, args)
 
           add_offense(args_node, :expression, message(method_name))

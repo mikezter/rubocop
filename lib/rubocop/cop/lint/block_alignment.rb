@@ -63,20 +63,23 @@ module RuboCop
 
         def start_for_block_node(block_node)
           # Which node should we align the 'end' with?
-          result = block_node
-
-          while (parent = result.parent)
-            break if !parent || !parent.loc
-            break if parent.loc.line != block_node.loc.line &&
-                     !parent.masgn_type?
-            break unless block_end_align_target?(parent, result)
-            result = parent
-          end
+          result = block_end_align_target(block_node)
 
           # In offense message, we want to show the assignment LHS rather than
           # the entire assignment
           result, = *result while result.op_asgn_type? || result.masgn_type?
           result
+        end
+
+        def block_end_align_target(node)
+          while (parent = node.parent)
+            break if !parent || !parent.loc
+            break if parent.loc.line != node.loc.line && !parent.masgn_type?
+            break unless block_end_align_target?(parent, node)
+            node = parent
+          end
+
+          node
         end
 
         def check_block_alignment(start_node, block_node)
@@ -91,19 +94,30 @@ module RuboCop
             compute_do_source_line_column(block_node, end_loc)
           return unless do_source_line_column
 
+          offense(block_node, start_loc, end_loc, do_source_line_column)
+        end
+
+        def offense(block_node, start_loc, end_loc, do_source_line_column)
           error_source_line_column = if style == :start_of_block
                                        do_source_line_column
                                      else
                                        loc_to_source_line_column(start_loc)
                                      end
 
-          fmt = format(
+          message = format_message(start_loc, end_loc, do_source_line_column,
+                                   error_source_line_column)
+
+          add_offense(block_node, end_loc, message)
+        end
+
+        def format_message(start_loc, end_loc, do_source_line_column,
+                           error_source_line_column)
+          format(
             MSG,
             format_source_line_column(loc_to_source_line_column(end_loc)),
             format_source_line_column(error_source_line_column),
             alt_start_msg(start_loc, do_source_line_column)
           )
-          add_offense(block_node, end_loc, fmt)
         end
 
         def compute_do_source_line_column(node, end_loc)
@@ -160,23 +174,24 @@ module RuboCop
 
         def autocorrect(node)
           ancestor_node = start_for_block_node(node)
-          source = node.source_range.source_buffer
+          start_col = compute_start_col(ancestor_node, node)
+          loc_end = node.loc.end
+          delta = start_col - loc_end.column
 
-          lambda do |corrector|
-            starting_position_of_block_end = node.loc.end.begin_pos
-            end_col = node.loc.end.column
-            start_col = compute_start_col(ancestor_node, node)
-
-            if end_col < start_col
-              delta = start_col - end_col
-              corrector.insert_before(node.loc.end, ' ' * delta)
-            elsif end_col > start_col
-              range_start = starting_position_of_block_end + start_col - end_col
-              range = Parser::Source::Range.new(source, range_start,
-                                                starting_position_of_block_end)
-              corrector.remove(range)
-            end
+          if delta > 0
+            add_space_before(loc_end, delta)
+          elsif delta < 0
+            remove_space_before(loc_end.begin_pos, -delta)
           end
+        end
+
+        def add_space_before(loc, delta)
+          ->(corrector) { corrector.insert_before(loc, ' ' * delta) }
+        end
+
+        def remove_space_before(end_pos, delta)
+          range = range_between(end_pos - delta, end_pos)
+          ->(corrector) { corrector.remove(range) }
         end
       end
     end

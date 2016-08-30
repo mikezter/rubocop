@@ -80,6 +80,7 @@ describe RuboCop::ConfigLoader do
         create_file(file_path, ['Style/Encoding:',
                                 '  Enabled: false'])
       end
+
       it 'returns a configuration inheriting from default.yml' do
         config = default_config['Style/Encoding'].dup
         config['Enabled'] = false
@@ -251,6 +252,44 @@ describe RuboCop::ConfigLoader do
       end
     end
 
+    context 'when a file inherits and overrides with non-namedspaced cops' do
+      let(:file_path) { '.rubocop.yml' }
+
+      before do
+        create_file('example.rb', '')
+
+        create_file('line_length.yml',
+                    ['LineLength:',
+                     '  Max: 120'])
+
+        create_file(file_path,
+                    ['inherit_from:',
+                     '  - line_length.yml',
+                     '',
+                     'LineLength:',
+                     '  AllowHeredoc: false'])
+      end
+
+      it 'returns includes both of the cop changes' do
+        config =
+          default_config.merge(
+            'Metrics/LineLength' => {
+              'Description' =>
+              default_config['Metrics/LineLength']['Description'],
+              'StyleGuide' =>
+              'https://github.com/bbatsov/ruby-style-guide#80-character-limits',
+              'Enabled' => true,
+              'Max' => 120,             # overridden in line_length.yml
+              'AllowHeredoc' => false,  # overridden in rubocop.yml
+              'AllowURI' => true,
+              'URISchemes' => %w(http https)
+            }
+          )
+
+        expect(configuration_from_file).to eq(config)
+      end
+    end
+
     context 'when a file inherits from an expanded path' do
       let(:file_path) { '.rubocop.yml' }
 
@@ -384,6 +423,14 @@ describe RuboCop::ConfigLoader do
       expect { load_file }.to raise_error(
         TypeError, /^Malformed configuration in .*\.rubocop\.yml$/
       )
+    end
+
+    it 'loads configuration properly when it includes non-ascii characters ' do
+      create_file(configuration_path, ['# All these cops of mine are ❤',
+                                       'Style/Encoding:',
+                                       '  Enabled: false'])
+
+      expect(load_file).to eq('Style/Encoding' => { 'Enabled' => false })
     end
 
     it 'returns an empty configuration loaded from an empty file' do

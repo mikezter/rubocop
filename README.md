@@ -51,7 +51,7 @@ haven't reached version 1.0 yet). To prevent an unwanted RuboCop update you
 might want to use a conservative version locking in your `Gemfile`:
 
 ```rb
-gem 'rubocop', '~> 0.40.0', require: false
+gem 'rubocop', '~> 0.42.0', require: false
 ```
 
 ## Quickstart
@@ -71,12 +71,11 @@ You can read a ton more about RuboCop in its [official manual](http://rubocop.re
 
 RuboCop supports the following Ruby implementations:
 
-* MRI 1.9.3
 * MRI 2.0
 * MRI 2.1
 * MRI 2.2
 * MRI 2.3
-* JRuby in 1.9 mode
+* JRuby 9.0+
 * Rubinius 2.0+
 
 ## Team

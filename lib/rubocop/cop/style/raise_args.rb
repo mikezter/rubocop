@@ -75,7 +75,12 @@ module RuboCop
         def correction_compact_to_exploded(node)
           exception_node, _new, message_node = *node.first
 
-          "#{exception_node.const_name}, #{message_node.source}"
+          message = message_node && message_node.source
+
+          correction = exception_node.const_name.to_s
+          correction = "#{correction}, #{message}" if message
+
+          correction
         end
 
         def correction_exploded_to_compact(node)
@@ -101,10 +106,10 @@ module RuboCop
         def check_exploded(node)
           _receiver, selector, *args = *node
 
-          if args.size == 1
+          if args.one?
             arg, = *args
 
-            if arg.type == :send && arg.loc.selector.is?('new')
+            if arg.send_type? && arg.loc.selector.is?('new')
               _receiver, _selector, *constructor_args = *arg
 
               # Allow code like `raise Ex.new(arg1, arg2)`.

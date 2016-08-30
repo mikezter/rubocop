@@ -11,10 +11,8 @@ module RuboCop
         include ConfigurableEnforcedStyle
 
         def on_method_def(node, _method_name, args, _body)
-          if style == :require_parentheses ||
-             (style == :require_no_parentheses_except_multiline &&
-              args.multiline?)
-            if arguments?(args) && !parentheses?(args)
+          if require_parentheses?(args)
+            if arguments_without_parentheses?(args)
               missing_parentheses(node, args)
             else
               correct_style_detected
@@ -35,9 +33,8 @@ module RuboCop
             else
               args_expr = args_node(node).source_range
               args_with_space = range_with_surrounding_space(args_expr, :left)
-              just_space = Parser::Source::Range.new(args_expr.source_buffer,
-                                                     args_with_space.begin_pos,
-                                                     args_expr.begin_pos)
+              just_space = range_between(args_with_space.begin_pos,
+                                         args_expr.begin_pos)
               corrector.replace(just_space, '(')
               corrector.insert_after(args_expr, ')')
             end
@@ -45,6 +42,16 @@ module RuboCop
         end
 
         private
+
+        def require_parentheses?(args)
+          style == :require_parentheses ||
+            (style == :require_no_parentheses_except_multiline &&
+             args.multiline?)
+        end
+
+        def arguments_without_parentheses?(args)
+          arguments?(args) && !parentheses?(args)
+        end
 
         def missing_parentheses(node, args)
           add_offense(node, args.source_range,
@@ -60,7 +67,7 @@ module RuboCop
         end
 
         def args_node(def_node)
-          if def_node.type == :def
+          if def_node.def_type?
             _method_name, args, _body = *def_node
           else
             _scope, _method_name, args, _body = *def_node

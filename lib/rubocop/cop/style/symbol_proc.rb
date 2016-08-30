@@ -19,33 +19,18 @@ module RuboCop
 
         def on_block(node)
           block_send_or_super, block_args, block_body = *node
-
-          if super?(block_send_or_super)
-            bmethod_name = :super
-          else
-            _breceiver, bmethod_name, _bargs = *block_send_or_super
-          end
+          block_method_name = resolve_block_method_name(block_send_or_super)
 
           # TODO: Rails-specific handling that we should probably make
           # configurable - https://github.com/bbatsov/rubocop/issues/1485
           # we should ignore lambdas & procs
           return if block_send_or_super == PROC_NODE
-          return if [:lambda, :proc].include?(bmethod_name)
-          return if ignored_method?(bmethod_name)
+          return if [:lambda, :proc].include?(block_method_name)
+          return if ignored_method?(block_method_name)
           return unless can_shorten?(block_args, block_body)
 
           _receiver, method_name, _args = *block_body
-
-          sb = node.source_range.source_buffer
-          block_start = node.loc.begin.begin_pos
-          block_end = node.loc.end.end_pos
-          range = Parser::Source::Range.new(sb, block_start, block_end)
-
-          add_offense(node,
-                      range,
-                      format(MSG,
-                             method_name,
-                             bmethod_name))
+          offense(node, method_name, block_method_name)
         end
 
         def autocorrect(node)
@@ -60,6 +45,27 @@ module RuboCop
             end
             autocorrect_method(corrector, node, args, method_name)
           end
+        end
+
+        private
+
+        def resolve_block_method_name(block_send_or_super)
+          return :super if super?(block_send_or_super)
+
+          _receiver, method_name, _args = *block_send_or_super
+          method_name
+        end
+
+        def offense(node, method_name, block_method_name)
+          block_start = node.loc.begin.begin_pos
+          block_end = node.loc.end.end_pos
+          range = range_between(block_start, block_end)
+
+          add_offense(node,
+                      range,
+                      format(MSG,
+                             method_name,
+                             block_method_name))
         end
 
         def autocorrect_method(corrector, node, args, method_name)
@@ -84,9 +90,7 @@ module RuboCop
         end
 
         def block_range_with_space(node)
-          block_range =
-            Parser::Source::Range.new(node.source_range.source_buffer,
-                                      begin_pos_for_replacement(node),
+          block_range = range_between(begin_pos_for_replacement(node),
                                       node.loc.end.end_pos)
           range_with_surrounding_space(block_range, :left)
         end
@@ -111,21 +115,39 @@ module RuboCop
         end
 
         def can_shorten?(block_args, block_body)
-          # something { |x, y| ... }
-          return false unless block_args.children.size == 1
-          return false if non_shortenable_args?(block_args)
-          return false unless block_body && block_body.type == :send
+          return false unless shortenable_args?(block_args) &&
+                              shortenable_body?(block_body)
 
-          receiver, _method_name, args = *block_body
+          argument_matches_receiver?(block_args, block_body)
+        end
 
-          # method in block must be invoked on a lvar without args
-          return false if args
-          return false unless receiver && receiver.type == :lvar
+        # TODO: This might be clearer as a node matcher with unification
+        def argument_matches_receiver?(block_args, block_body)
+          receiver, = *block_body
 
           block_arg_name, = *block_args.children.first
           receiver_name, = *receiver
 
           block_arg_name == receiver_name
+        end
+
+        # The block body must have a single send without arguments to an
+        # lvar type.
+        # E.g.: `foo { |bar| bar.baz }`
+        def shortenable_body?(block_body)
+          return false unless block_body && block_body.send_type?
+
+          receiver, _, args = *block_body
+
+          return false if args
+
+          receiver && receiver.lvar_type?
+        end
+
+        # The block must have a single, shortenable argument.
+        # E.g.: `foo { |bar| ... }`
+        def shortenable_args?(block_args)
+          block_args.children.one? && !non_shortenable_args?(block_args)
         end
 
         def super?(node)

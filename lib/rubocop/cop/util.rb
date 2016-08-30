@@ -23,22 +23,9 @@ module RuboCop
         + - * / % ** ~ +@ -@ [] []= ! != !~
       ).map(&:to_sym).push(:'`').freeze
 
-      STRING_ESCAPES = {
-        '\a' => "\a", '\b' => "\b", '\e' => "\e", '\f' => "\f", '\n' => "\n",
-        '\r' => "\r", '\s' => ' ',  '\t' => "\t", '\v' => "\v", "\\\n" => ''
-      }.freeze
-      STRING_ESCAPE_REGEX = /\\(?:
-                              [abefnrstv\n]    |   # simple escapes (above)
-                              \d{1,3}          |   # octal byte escape
-                              x\d{1,2}         |   # hex byte escape
-                              u[0-9a-fA-F]{4}  |   # unicode char escape
-                              u\{[^}]*\}       |   # extended unicode escape
-                              .                    # any other escaped char
-                            )/x
-
       # Match literal regex characters, not including anchors, character
       # classes, alternatives, groups, repetitions, references, etc
-      LITERAL_REGEX = /[\w\s\-,"'!#%&<>=;:`~]|\\[^AbBdDgGkwWszZS0-9]/
+      LITERAL_REGEX = /[\w\s\-,"'!#%&<>=;:`~]|\\[^AbBdDgGhHkpPRwWXsSzZS0-9]/
 
       module_function
 
@@ -94,10 +81,7 @@ module RuboCop
         yield sexp if Array(syms).include?(sexp.type)
         return if Array(excludes).include?(sexp.type)
 
-        sexp.children.each do |elem|
-          next unless elem.is_a?(Parser::AST::Node)
-          on_node(syms, elem, excludes, &block)
-        end
+        sexp.each_child_node { |elem| on_node(syms, elem, excludes, &block) }
       end
 
       def source_range(source_buffer, line_number, column, length = 1)
@@ -108,7 +92,7 @@ module RuboCop
           column_index = column
         end
 
-        line_begin_pos = if line_number == 0
+        line_begin_pos = if line_number.zero?
                            0
                          else
                            source_buffer.line_range(line_number).begin_pos
@@ -130,6 +114,10 @@ module RuboCop
         else
           range.column
         end
+      end
+
+      def range_between(start_pos, end_pos)
+        Parser::Source::Range.new(processed_source.buffer, start_pos, end_pos)
       end
 
       def range_with_surrounding_comma(range, side = :both)
@@ -164,7 +152,7 @@ module RuboCop
       def move_pos(src, pos, step, condition, regexp)
         offset = step == -1 ? -1 : 0
         pos += step while condition && src[pos + offset] =~ regexp
-        pos
+        pos < 0 ? 0 : pos
       end
 
       def directions(side)
@@ -225,7 +213,7 @@ module RuboCop
 
         # Regex matches IF there is a ' or there is a \\ in the string that is
         # not preceded/followed by another \\ (e.g. "\\x34") but not "\\\\".
-        string.inspect =~ /'|(?<! \\) \\{2}* \\ (?![\\"])/x
+        string =~ /'|(?<! \\) \\{2}* \\ (?![\\"])/x
       end
 
       # If double quoted string literals are found in Ruby code, and they are
@@ -233,12 +221,20 @@ module RuboCop
       def double_quotes_acceptable?(string)
         # If a string literal contains hard-to-type characters which would
         # not appear on a "normal" keyboard, then double-quotes are acceptable
-        double_quotes_required?(string) ||
+        needs_escaping?(string) ||
           string.codepoints.any? { |cp| cp < 32 || cp > 126 }
       end
 
+      def needs_escaping?(string)
+        double_quotes_required?(escape_string(string))
+      end
+
+      def escape_string(string)
+        string.inspect[1..-2].tap { |s| s.gsub!(/\\"/, '"') }
+      end
+
       def to_string_literal(string)
-        if double_quotes_required?(string)
+        if needs_escaping?(string)
           string.inspect
         else
           "'#{string.gsub('\\') { '\\\\' }}'"
@@ -246,35 +242,29 @@ module RuboCop
       end
 
       def to_symbol_literal(string)
-        if string =~ /\s/ || double_quotes_required?(string)
-          ":#{to_string_literal(string)}"
-        else
-          ":#{string}"
-        end
+        ":#{string.to_sym}"
       end
 
-      # Take a string with embedded escapes, and convert the escapes as the Ruby
-      # interpreter would when reading a double-quoted string literal.
-      # For example, "\\n" will be converted to "\n".
       def interpret_string_escapes(string)
-        # We currently don't handle \cx, \C-x, and \M-x
-        string.gsub(STRING_ESCAPE_REGEX) do |escape|
-          STRING_ESCAPES[escape] || begin
-            if escape[1] == 'x'
-              [escape[2..-1].hex].pack('C')
-            elsif escape[1] == 'u'
-              if escape[2] == '{'
-                escape[3..-1].split(/\s+/).map(&:hex).pack('U')
-              else
-                [escape[2..-1].hex].pack('U')
-              end
-            elsif escape[1] =~ /\d/ # octal escape
-              [escape[1..-1].to_i(8)].pack('C')
-            else
-              escape[1] # literal escaped char, like \\
-            end
-          end
-        end
+        StringInterpreter.interpret(string)
+      end
+
+      def same_line?(n1, n2)
+        n1.respond_to?(:loc) &&
+          n2.respond_to?(:loc) &&
+          n1.loc.line == n2.loc.line
+      end
+
+      def line_distance(n1, n2)
+        n2.loc.line - n1.loc.line
+      end
+
+      def preceed?(n1, n2)
+        line_distance(n1, n2) == 1
+      end
+
+      def stripped_source_upto(line)
+        processed_source[0..line].map(&:strip)
       end
     end
   end

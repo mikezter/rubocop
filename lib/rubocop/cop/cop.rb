@@ -156,10 +156,9 @@ module RuboCop
       end
 
       def add_offense(node, loc, message = nil, severity = nil)
-        location = loc.is_a?(Symbol) ? node.loc.public_send(loc) : loc
+        location = find_location(node, loc)
 
-        # Don't include the same location twice for one cop.
-        return if @offenses.any? { |o| o.location == location }
+        return if duplicate_location?(location)
 
         severity = custom_severity || severity || default_severity
 
@@ -170,6 +169,15 @@ module RuboCop
 
         @offenses << Offense.new(severity, location, message, name, status)
         yield if block_given? && status != :disabled
+      end
+
+      def find_location(node, loc)
+        # Location can be provided as a symbol, e.g.: `:keyword`
+        loc.is_a?(Symbol) ? node.loc.public_send(loc) : loc
+      end
+
+      def duplicate_location?(location)
+        @offenses.any? { |o| o.location == location }
       end
 
       def correct(node)
@@ -193,7 +201,7 @@ module RuboCop
       end
 
       def target_ruby_version
-        @config.for_all_cops['TargetRubyVersion']
+        @config.target_ruby_version
       end
 
       def parse(source, path = nil)
@@ -217,17 +225,17 @@ module RuboCop
 
       def style_guide_url
         url = cop_config['StyleGuide']
-        (url.nil? || url.empty?) ? nil : url
+        url.nil? || url.empty? ? nil : url
       end
 
       def reference_url
         url = cop_config['Reference']
-        (url.nil? || url.empty?) ? nil : url
+        url.nil? || url.empty? ? nil : url
       end
 
       def details
         details = cop_config && cop_config['Details']
-        (details.nil? || details.empty?) ? nil : details
+        details.nil? || details.empty? ? nil : details
       end
 
       private

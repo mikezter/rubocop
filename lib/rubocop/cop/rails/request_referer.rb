@@ -3,16 +3,16 @@
 
 module RuboCop
   module Cop
-    module Style
+    module Rails
       # This cop checks for consistent uses of request.referrer or
       # request.referrer, depending on configuration.
       class RequestReferer < Cop
         include ConfigurableEnforcedStyle
 
         def on_send(node)
-          if offense?(node)
-            add_offense(node.source_range, node.source_range, message)
-          end
+          return unless offense?(node)
+
+          add_offense(node.source_range, node.source_range, message)
         end
 
         def autocorrect(node)

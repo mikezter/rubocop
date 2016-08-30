@@ -60,7 +60,7 @@ module RuboCop
 
         def autocorrect(node)
           expr1, expr2 = *node
-          replacement = (node.type == :and ? '&&' : '||')
+          replacement = (node.and_type? ? '&&' : '||')
           lambda do |corrector|
             [expr1, expr2].each do |expr|
               if expr.send_type?
@@ -117,13 +117,12 @@ module RuboCop
         end
 
         def whitespace_before_arg(node)
-          sb = node.source_range.source_buffer
           begin_paren = node.loc.selector.end_pos
           end_paren = begin_paren
           # Increment position of parenthesis, unless message is a predicate
           # method followed by a non-whitespace char (e.g. is_a?String).
           end_paren += 1 unless node.source =~ /\?[!\S]/
-          Parser::Source::Range.new(sb, begin_paren, end_paren)
+          range_between(begin_paren, end_paren)
         end
       end
     end

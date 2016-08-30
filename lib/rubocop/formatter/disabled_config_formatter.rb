@@ -25,6 +25,12 @@ module RuboCop
         attr_accessor :config_to_allow_offenses, :detected_styles
       end
 
+      def initialize(output, options = {})
+        super
+        @cops_with_offenses ||= Hash.new(0)
+        @files_with_offenses ||= {}
+      end
+
       def file_started(_file, _file_info)
         @exclude_limit_option = @options[:exclude_limit]
         @exclude_limit = (
@@ -34,8 +40,6 @@ module RuboCop
       end
 
       def file_finished(file, offenses)
-        @cops_with_offenses ||= Hash.new(0)
-        @files_with_offenses ||= {}
         offenses.each do |o|
           @cops_with_offenses[o.cop_name] += 1
           @files_with_offenses[o.cop_name] ||= []
@@ -55,6 +59,8 @@ module RuboCop
         puts "Run `rubocop --config #{output.path}`, or add `inherit_from: " \
              "#{output.path}` in a .rubocop.yml file."
       end
+
+      private
 
       def command
         command = 'rubocop --auto-gen-config'
@@ -85,14 +91,22 @@ module RuboCop
           output.puts '# Cop supports --auto-correct.'
         end
 
-        default_cfg = RuboCop::ConfigLoader.default_configuration[cop_name]
+        default_cfg = default_config(cop_name)
         return unless default_cfg
 
-        params = default_cfg.keys -
-                 %w(Description StyleGuide Reference Enabled Exclude) -
-                 cfg.keys
+        params = cop_config_params(default_cfg, cfg)
         return if params.empty?
 
+        output_cop_param_comments(params, default_cfg)
+      end
+
+      def cop_config_params(default_cfg, cfg)
+        default_cfg.keys -
+          %w(Description StyleGuide Reference Enabled Exclude) -
+          cfg.keys
+      end
+
+      def output_cop_param_comments(params, default_cfg)
         output.puts "# Configuration parameters: #{params.join(', ')}."
 
         params.each do |param|
@@ -104,13 +118,22 @@ module RuboCop
         end
       end
 
+      def default_config(cop_name)
+        RuboCop::ConfigLoader.default_configuration[cop_name]
+      end
+
       def output_cop_config(output, cfg, cop_name)
+        # 'Enabled' option will be put into file only if exclude
+        # limit is exceeded.
+        cfg_without_enabled = cfg.reject { |key| key == 'Enabled' }
+
         output.puts "#{cop_name}:"
-        cfg.each do |key, value|
+        cfg_without_enabled.each do |key, value|
           value = value[0] if value.is_a?(Array)
           output.puts "  #{key}: #{value}"
         end
-        output_offending_files(output, cfg, cop_name)
+
+        output_offending_files(output, cfg_without_enabled, cop_name)
       end
 
       def output_offending_files(output, cfg, cop_name)
@@ -147,9 +170,6 @@ module RuboCop
             output.puts "    - '#{file}'"
           end
         end
-      rescue LoadError
-        # Fallback to Enabled: false for Ruby < 1.9.3
-        output.puts '  Enabled: false'
       end
     end
   end

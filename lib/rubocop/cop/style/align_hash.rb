@@ -189,7 +189,7 @@ module RuboCop
         end
 
         def hash?(node)
-          node.respond_to?(:type) && node.type == :hash
+          node.respond_to?(:type) && node.hash_type?
         end
 
         def explicit_hash?(node)
@@ -207,23 +207,36 @@ module RuboCop
         def autocorrect(node)
           # We can't use the instance variable inside the lambda. That would
           # just give each lambda the same reference and they would all get the
+          # last value of each. A local variable fixes the problem.
+          key_delta = @column_deltas[:key] || 0
+          key, value = *node
+
+          if value.nil?
+            correct_no_value(key_delta, node.source_range)
+          else
+            correct_key_value(key_delta, key.source_range, value.source_range,
+                              node.loc.operator)
+          end
+        end
+
+        def correct_no_value(key_delta, key)
+          ->(corrector) { adjust(corrector, key_delta, key) }
+        end
+
+        def correct_key_value(key_delta, key, value, separator)
+          # We can't use the instance variable inside the lambda. That would
+          # just give each lambda the same reference and they would all get the
           # last value of each. Some local variables fix the problem.
-          key_delta       = @column_deltas[:key] || 0
           separator_delta = @column_deltas[:separator] || 0
           value_delta     = @column_deltas[:value] || 0
 
-          key, value = *node
-          key_column = key.source_range.column
+          key_column = key.column
           key_delta = -key_column if key_delta < -key_column
 
           lambda do |corrector|
-            if value.nil?
-              adjust(corrector, key_delta, node.source_range)
-            else
-              adjust(corrector, key_delta, key.source_range)
-              adjust(corrector, separator_delta, node.loc.operator)
-              adjust(corrector, value_delta, value.source_range)
-            end
+            adjust(corrector, key_delta, key)
+            adjust(corrector, separator_delta, separator)
+            adjust(corrector, value_delta, value)
           end
         end
 
@@ -240,15 +253,13 @@ module RuboCop
           if delta > 0
             corrector.insert_before(range, ' ' * delta)
           elsif delta < 0
-            range = Parser::Source::Range.new(range.source_buffer,
-                                              range.begin_pos - delta.abs,
-                                              range.begin_pos)
+            range = range_between(range.begin_pos - delta.abs, range.begin_pos)
             corrector.remove(range)
           end
         end
 
         def good_alignment?
-          @column_deltas.values.compact.none? { |v| v != 0 }
+          @column_deltas.values.compact.all?(&:zero?)
         end
       end
     end

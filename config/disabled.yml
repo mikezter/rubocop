@@ -5,6 +5,11 @@
 Rails:
   Enabled: false
 
+Rails/SaveBang:
+  Description: 'Identifies possible cases where Active Record save! or related should be used.'
+  StyleGuide: 'https://github.com/bbatsov/rails-style-guide#save-bang'
+  Enabled: false
+
 Style/AutoResourceCleanup:
   Description: 'Suggests the usage of an auto resource cleanup version of a method (if available).'
   Enabled: false
@@ -17,6 +22,13 @@ Style/CollectionMethods:
 Style/Copyright:
   Description: 'Include a copyright notice in each file before any code.'
   Enabled: false
+
+Style/DocumentationMethod:
+  Description: 'Public methods.'
+  Enabled: false
+  Exclude:
+    - 'spec/**/*'
+    - 'test/**/*'
 
 Style/Encoding:
   Description: 'Use UTF-8 as the source file encoding.'
@@ -45,6 +57,12 @@ Style/FirstMethodParameterLineBreak:
   Description: >-
                  Checks for a line break before the first parameter in a
                  multi-line method parameter definition.
+  Enabled: false
+
+Style/ImplicitRuntimeError:
+  Description: >-
+                 Use `raise` or `fail` with an explicit exception class and
+                 message, rather than just a message.
   Enabled: false
 
 Style/InlineComment:

@@ -5,14 +5,15 @@ module RuboCop
   module Cop
     # Common functionality for checking if nodes.
     module IfNode
+      extend NodePattern::Macros
+
       def ternary?(node)
         node.loc.respond_to?(:question)
       end
 
       def modifier_if?(node)
         node.loc.respond_to?(:keyword) &&
-          %w(if unless).include?(node.loc.keyword.source) &&
-          node.loc.respond_to?(:end) && node.loc.end.nil?
+          %w(if unless).include?(node.loc.keyword.source) && node.modifier_form?
       end
 
       def elsif?(node)
@@ -33,6 +34,10 @@ module RuboCop
 
         [condition, body, else_clause]
       end
+
+      def_node_matcher :guard_clause?, <<-PATTERN
+          [{(send nil {:raise :fail} ...) return break next} single_line?]
+      PATTERN
     end
   end
 end

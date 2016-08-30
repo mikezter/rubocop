@@ -93,12 +93,10 @@ module RuboCop
 
         def on_send(node)
           receiver, method_name, *_args = *node
-          return unless receiver && receiver.type == :self
-          return if operator?(method_name) ||
-                    keyword?(method_name) ||
-                    constant_name?(method_name) ||
-                    node.asgn_method_call? ||
-                    @allowed_send_nodes.include?(node) ||
+          return unless receiver && receiver.self_type?
+          return unless regular_method_call?(node)
+
+          return if @allowed_send_nodes.include?(node) ||
                     @local_variables.include?(method_name)
 
           add_offense(node, :expression)
@@ -113,6 +111,15 @@ module RuboCop
         end
 
         private
+
+        def regular_method_call?(node)
+          _receiver, method_name, *_args = *node
+
+          !(operator?(method_name) ||
+            keyword?(method_name) ||
+            constant_name?(method_name) ||
+            node.asgn_method_call?)
+        end
 
         def on_argument(node)
           name, = *node
@@ -132,10 +139,13 @@ module RuboCop
         end
 
         def allow_self(node)
-          return unless node.type == :send
+          return unless node.send_type?
 
           receiver, _method_name, *_args = *node
-          @allowed_send_nodes << node if receiver && receiver.type == :self
+
+          return unless receiver && receiver.self_type?
+
+          @allowed_send_nodes << node
         end
       end
     end

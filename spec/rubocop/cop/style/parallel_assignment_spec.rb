@@ -7,13 +7,7 @@ describe RuboCop::Cop::Style::ParallelAssignment, :config do
   subject(:cop) { described_class.new(config) }
 
   let(:config) do
-    RuboCop::Config.new('Performance/ParallelAssignment' => {
-                          'Enabled' => true
-                        },
-                        'Style/IndentationWidth' => {
-                          'Enabled' => true,
-                          'Width' => 2
-                        })
+    RuboCop::Config.new('Style/IndentationWidth' => { 'Width' => 2 })
   end
 
   shared_examples('offenses') do |source|
@@ -118,11 +112,27 @@ describe RuboCop::Cop::Style::ParallelAssignment, :config do
         end
 
       it 'when the right variable is an array' do
-        new_source = autocorrect_source(cop, 'a, b, c = [1, 2, 3]')
+        new_source = autocorrect_source(cop, 'a, b, c = ["1", "2", :c]')
 
-        expect(new_source).to eq(['a = 1',
-                                  'b = 2',
-                                  'c = 3'].join("\n"))
+        expect(new_source).to eq(['a = "1"',
+                                  'b = "2"',
+                                  'c = :c'].join("\n"))
+      end
+
+      it 'when the right variable is a word array' do
+        new_source = autocorrect_source(cop, 'a, b, c = %w(1 2 3)')
+
+        expect(new_source).to eq(["a = '1'",
+                                  "b = '2'",
+                                  "c = '3'"].join("\n"))
+      end
+
+      it 'when the right variable is a symbol array' do
+        new_source = autocorrect_source(cop, 'a, b, c = %i(a b c)')
+
+        expect(new_source).to eq(['a = :a',
+                                  'b = :b',
+                                  'c = :c'].join("\n"))
       end
 
       it 'when assigning to method returns' do
@@ -290,6 +300,21 @@ describe RuboCop::Cop::Style::ParallelAssignment, :config do
       end
 
       it 'parallel assignment in rescue statements' do
+        new_source = autocorrect_source(cop, ['def bar',
+                                              '  a, b = 1, 2',
+                                              'rescue',
+                                              "  'foo'",
+                                              'end'].join("\n"))
+
+        expect(new_source).to eq(['def bar',
+                                  '  a = 1',
+                                  '  b = 2',
+                                  'rescue',
+                                  "  'foo'",
+                                  'end'].join("\n"))
+      end
+
+      it 'parallel assignment in rescue statements' do
         new_source = autocorrect_source(cop, ['begin',
                                               '  a, b = 1, 2',
                                               'rescue',
@@ -305,18 +330,34 @@ describe RuboCop::Cop::Style::ParallelAssignment, :config do
       end
 
       it 'when the expression uses a modifier rescue statement ' \
-         'inside a method' do
+         'as the only thing inside of a method' do
         new_source = autocorrect_source(cop, ['def foo',
                                               '  a, b = 1, 2 rescue foo',
                                               'end'])
 
         expect(new_source).to eq(['def foo',
+                                  '  a = 1',
+                                  '  b = 2',
+                                  'rescue',
+                                  '  foo',
+                                  'end'].join("\n"))
+      end
+
+      it 'when the expression uses a modifier rescue statement ' \
+         'inside of a method' do
+        new_source = autocorrect_source(cop, ['def foo',
+                                              '  a, b = %w(1 2) rescue foo',
+                                              '  something_else',
+                                              'end'])
+
+        expect(new_source).to eq(['def foo',
                                   '  begin',
-                                  '    a = 1',
-                                  '    b = 2',
+                                  "    a = '1'",
+                                  "    b = '2'",
                                   '  rescue',
                                   '    foo',
                                   '  end',
+                                  '  something_else',
                                   'end'].join("\n"))
       end
 

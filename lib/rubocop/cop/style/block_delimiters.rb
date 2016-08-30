@@ -9,26 +9,25 @@ module RuboCop
       class BlockDelimiters < Cop
         include ConfigurableEnforcedStyle
 
-        def_node_matcher :block_method_name, '(block (send _ $_ ...) ...)'
-
         def on_send(node)
           _receiver, method_name, *args = *node
           return if args.empty?
           return if parentheses?(node) || operator?(method_name)
 
-          get_blocks(args.last) do |block|
-            # If there are no parentheses around the arguments, then braces and
-            # do-end have different meaning due to how they bind, so we allow
-            # either.
-            ignore_node(block)
+          args.each do |arg|
+            get_blocks(arg) do |block|
+              # If there are no parentheses around the arguments, then braces
+              # and do-end have different meaning due to how they bind, so we
+              # allow either.
+              ignore_node(block)
+            end
           end
         end
 
         def on_block(node)
           return if ignored_node?(node)
-          return if proper_block_style?(node)
 
-          add_offense(node, :begin)
+          add_offense(node, :begin) unless proper_block_style?(node)
         end
 
         private
@@ -65,35 +64,52 @@ module RuboCop
 
         def message(node)
           case style
-          when :line_count_based
-            line_count_based_message(node)
-          when :semantic
-            semantic_message(node)
-          when :braces_for_chaining
-            braces_for_chaining_message(node)
+          when :line_count_based    then line_count_based_message(node)
+          when :semantic            then semantic_message(node)
+          when :braces_for_chaining then braces_for_chaining_message(node)
           end
         end
 
         def autocorrect(node)
           return if correction_would_break_code?(node)
 
+          if node.loc.begin.is?('{')
+            replace_braces_with_do_end(node.loc)
+          else
+            replace_do_end_with_braces(node.loc)
+          end
+        end
+
+        def replace_braces_with_do_end(loc)
+          b = loc.begin
+          e = loc.end
+
           lambda do |corrector|
-            b = node.loc.begin
-            e = node.loc.end
-            if b.is?('{')
-              corrector.insert_before(b, ' ') unless whitespace_before?(b)
-              corrector.insert_before(e, ' ') unless whitespace_before?(e)
-              corrector.replace(b, 'do')
-              corrector.replace(e, 'end')
-            else
-              corrector.replace(b, '{')
-              corrector.replace(e, '}')
-            end
+            corrector.insert_before(b, ' ') unless whitespace_before?(b)
+            corrector.insert_before(e, ' ') unless whitespace_before?(e)
+            corrector.insert_after(b, ' ') unless whitespace_after?(b)
+            corrector.replace(b, 'do')
+            corrector.replace(e, 'end')
+          end
+        end
+
+        def replace_do_end_with_braces(loc)
+          b = loc.begin
+          e = loc.end
+
+          lambda do |corrector|
+            corrector.insert_after(b, ' ') unless whitespace_after?(b, 2)
+            corrector.replace(b, '{')
+            corrector.replace(e, '}')
           end
         end
 
         def whitespace_before?(node)
           node.source_buffer.source[node.begin_pos - 1, 1] =~ /\s/
+        end
+
+        def whitespace_after?(node, length = 1)
+          node.source_buffer.source[node.begin_pos + length, 1] =~ /\s/
         end
 
         def get_blocks(node, &block)
@@ -117,12 +133,9 @@ module RuboCop
 
         def proper_block_style?(node)
           case style
-          when :line_count_based
-            line_count_based_block_style?(node)
-          when :semantic
-            semantic_block_style?(node)
-          when :braces_for_chaining
-            braces_for_chaining_style?(node)
+          when :line_count_based    then line_count_based_block_style?(node)
+          when :semantic            then semantic_block_style?(node)
+          when :braces_for_chaining then braces_for_chaining_style?(node)
           end
         end
 
@@ -133,7 +146,7 @@ module RuboCop
         end
 
         def semantic_block_style?(node)
-          method_name = block_method_name(node)
+          method_name = node.method_name
           return true if ignored_method?(method_name)
 
           block_begin = node.loc.begin.source
@@ -161,13 +174,13 @@ module RuboCop
         end
 
         def correction_would_break_code?(node)
-          if node.loc.begin.is?('do')
-            # Converting `obj.method arg do |x| end` to use `{}` would cause
-            # a syntax error.
-            send = node.children.first
-            _receiver, _method_name, *args = *send
-            !args.empty? && !parentheses?(send)
-          end
+          return unless node.loc.begin.is?('do')
+
+          # Converting `obj.method arg do |x| end` to use `{}` would cause
+          # a syntax error.
+          send = node.children.first
+          _receiver, _method_name, *args = *send
+          !args.empty? && !parentheses?(send)
         end
 
         def ignored_method?(method_name)

@@ -13,20 +13,36 @@ module RuboCop
         MSG = 'Space inside %s.'.freeze
 
         def on_hash(node)
-          b_ix = index_of_first_token(node)
           tokens = processed_source.tokens
 
-          # Hash literal with braces?
-          return unless tokens[b_ix].type == :tLBRACE
+          hash_literal_with_braces(node) do |begin_index, end_index|
+            check(tokens[begin_index], tokens[begin_index + 1])
+            return if begin_index == end_index - 1
 
-          e_ix = index_of_last_token(node)
-          return unless tokens[e_ix].type == :tRCURLY
-
-          check(tokens[b_ix], tokens[b_ix + 1])
-          check(tokens[e_ix - 1], tokens[e_ix]) unless b_ix == e_ix - 1
+            check(tokens[end_index - 1], tokens[end_index])
+          end
         end
 
         private
+
+        def hash_literal_with_braces(node)
+          tokens = processed_source.tokens
+          begin_index = index_of_first_token(node)
+          return unless left_brace?(tokens[begin_index])
+
+          end_index = index_of_last_token(node)
+          return unless right_brace?(tokens[end_index])
+
+          yield begin_index, end_index
+        end
+
+        def left_brace?(token)
+          token.type == :tLBRACE
+        end
+
+        def right_brace?(token)
+          token.type == :tRCURLY
+        end
 
         def check(t1, t2)
           # No offense if line break inside.
@@ -34,15 +50,25 @@ module RuboCop
           return if t2.type == :tCOMMENT # Also indicates there's a line break.
 
           is_empty_braces = t1.text == '{' && t2.text == '}'
-          expect_space = if is_empty_braces
-                           cop_config['EnforcedStyleForEmptyBraces'] == 'space'
-                         else
-                           style == :space
-                         end
+          expect_space    = expect_space?(t1, t2)
+
           if offense?(t1, t2, expect_space)
             incorrect_style_detected(t1, t2, expect_space, is_empty_braces)
           else
             correct_style_detected
+          end
+        end
+
+        def expect_space?(t1, t2)
+          is_same_braces  = t1.text == t2.text
+          is_empty_braces = t1.text == '{' && t2.text == '}'
+
+          if is_same_braces && style == :compact
+            false
+          elsif is_empty_braces
+            cop_config['EnforcedStyleForEmptyBraces'] != 'no_space'
+          else
+            style != :no_space
           end
         end
 
@@ -51,7 +77,16 @@ module RuboCop
           range = expect_space ? brace : space_range(brace)
           add_offense(range, range,
                       message(brace, is_empty_braces, expect_space)) do
-            opposite_style_detected
+            style = expect_space ? :no_space : :space
+            ambiguous_or_unexpected_style_detected(style, t1.text == t2.text)
+          end
+        end
+
+        def ambiguous_or_unexpected_style_detected(style, is_match)
+          if is_match
+            ambiguous_style_detected(style, :compact)
+          else
+            unexpected_style_detected(style)
           end
         end
 
@@ -99,16 +134,16 @@ module RuboCop
           src = range.source_buffer.source
           end_pos = range.end_pos
           end_pos += 1 while src[end_pos] =~ /[ \t]/
-          Parser::Source::Range.new(range.source_buffer,
-                                    range.begin_pos + 1, end_pos)
+
+          range_between(range.begin_pos + 1, end_pos)
         end
 
         def range_of_space_to_the_left(range)
           src = range.source_buffer.source
           begin_pos = range.begin_pos
           begin_pos -= 1 while src[begin_pos - 1] =~ /[ \t]/
-          Parser::Source::Range.new(range.source_buffer, begin_pos,
-                                    range.end_pos - 1)
+
+          range_between(begin_pos, range.end_pos - 1)
         end
       end
     end

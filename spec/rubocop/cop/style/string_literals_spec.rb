@@ -63,16 +63,44 @@ describe RuboCop::Cop::Style::StringLiterals, :config do
       expect(cop.offenses).to be_empty
     end
 
-    it 'accepts double quotes when they are needed' do
-      src = ['a = "\n"',
-             'b = "#{encode_severity}:' \
-             '#{sprintf(\'%3d\', line_number)}: #{m}"',
-             'c = "\'"',
-             'd = "#@test"',
-             'e = "#$test"',
-             'f = "\e"',
-             'g = "#@@test"']
-      inspect_source(cop, src)
+    it 'accepts double quotes when new line is used' do
+      inspect_source(cop, '"\n"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when interpolating & quotes in multiple lines' do
+      inspect_source(cop, '"#{encode_severity}:' \
+                          '#{sprintf(\'%3d\', line_number)}: #{m}"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when single quotes are used' do
+      inspect_source(cop, '"\'"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when interpolating an instance variable' do
+      inspect_source(cop, '"#@test"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when interpolating a global variable' do
+      inspect_source(cop, '"#$test"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when interpolating a class variable' do
+      inspect_source(cop, '"#@@test"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when control characters are used' do
+      inspect_source(cop, '"\e"')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'accepts double quotes when unicode control sequence is used' do
+      inspect_source(cop, '"Espa\u00f1a"')
       expect(cop.offenses).to be_empty
     end
 
@@ -139,14 +167,14 @@ describe RuboCop::Cop::Style::StringLiterals, :config do
                                   'special symbols.'])
     end
 
-    it 'registers an offense for hello... using hex escapes' do
-      inspect_source(cop, '"\\x68\\x65\\x6c\\x6c\\x6f"')
+    it 'registers an offense for words with non-ascii chars' do
+      inspect_source(cop, '"España"')
       expect(cop.offenses.size).to eq(1)
     end
 
-    it 'autocorrects hello... using hex escapes' do
-      new_source = autocorrect_source(cop, '"\\x68\\x65\\x6c\\x6c\\x6f"')
-      expect(new_source).to eq("'hello'")
+    it 'autocorrects words with non-ascii chars' do
+      new_source = autocorrect_source(cop, '"España"')
+      expect(new_source).to eq("'España'")
     end
   end
 
@@ -210,6 +238,11 @@ describe RuboCop::Cop::Style::StringLiterals, :config do
              "c = '\#{x}'"]
       inspect_source(cop, src)
       expect(cop.offenses).to be_empty
+    end
+
+    it 'flags single quotes with plain # (not #@var or #{interpolation}' do
+      inspect_source(cop, "a = 'blah #'")
+      expect(cop.offenses.size).to be 1
     end
 
     it 'accepts single quotes at the start of regexp literals' do

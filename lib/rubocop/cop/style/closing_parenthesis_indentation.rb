@@ -54,18 +54,29 @@ module RuboCop
           return unless right_paren
           return unless begins_its_line?(right_paren)
 
+          correct_column = expected_column(node, elements)
+          @column_delta = correct_column - right_paren.column
+          return if @column_delta.zero?
+
+          left_paren = node.loc.begin
+          msg = correct_column == left_paren.column ? MSG_ALIGN : MSG_INDENT
+          add_offense(right_paren, right_paren, msg)
+        end
+
+        def expected_column(node, elements)
           left_paren = node.loc.begin
 
-          correct_column = if line_break_after_left_paren?(left_paren, elements)
-                             left_paren.source_line =~ /\S/
-                           else
-                             left_paren.column
-                           end
-          @column_delta = correct_column - right_paren.column
-          return if @column_delta == 0
+          if node.send_type? && fixed_parameter_indentation? ||
+             line_break_after_left_paren?(left_paren, elements)
+            left_paren.source_line =~ /\S/
+          else
+            left_paren.column
+          end
+        end
 
-          msg = correct_column == left_paren.column ? MSG_ALIGN : MSG_INDENT
-          add_offense(node.loc.end, node.loc.end, msg)
+        def fixed_parameter_indentation?
+          config.for_cop('Style/AlignParameters')['EnforcedStyle'] ==
+            'with_fixed_indentation'
         end
 
         def line_break_after_left_paren?(left_paren, elements)

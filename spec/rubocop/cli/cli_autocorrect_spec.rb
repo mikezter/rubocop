@@ -247,6 +247,51 @@ describe RuboCop::CLI, :isolated_environment do
     expect(IO.read('example.rb')).to eq(corrected.join("\n"))
   end
 
+  [:line_count_based, :semantic, :braces_for_chaining].each do |style|
+    context "when BlockDelimiters has #{style} style" do
+      it 'corrects SpaceBeforeBlockBraces, SpaceInsideBlockBraces offenses' do
+        source = ['r = foo.map{|a|',
+                  '  a.bar.to_s',
+                  '}',
+                  'foo.map{|a|',
+                  '  a.bar.to_s',
+                  '}.baz']
+        create_file('example.rb', source)
+        create_file('.rubocop.yml', ['Style/BlockDelimiters:',
+                                     "  EnforcedStyle: #{style}"])
+        expect(cli.run(['--auto-correct'])).to eq(1)
+        corrected = case style
+                    when :semantic
+                      ['r = foo.map { |a|',
+                       '  a.bar.to_s',
+                       '}',
+                       'foo.map { |a|',
+                       '  a.bar.to_s',
+                       '}.baz',
+                       '']
+                    when :braces_for_chaining
+                      ['r = foo.map do |a|',
+                       '  a.bar.to_s',
+                       'end',
+                       'foo.map { |a|',
+                       '  a.bar.to_s',
+                       '}.baz',
+                       '']
+                    when :line_count_based
+                      ['r = foo.map do |a|',
+                       '  a.bar.to_s',
+                       'end',
+                       'foo.map do |a|',
+                       '  a.bar.to_s',
+                       'end.baz',
+                       '']
+                    end
+        expect($stderr.string).to eq('')
+        expect(IO.read('example.rb')).to eq(corrected.join("\n"))
+      end
+    end
+  end
+
   it 'corrects InitialIndentation offenses' do
     source = ['  # comment 1',
               '',
@@ -272,6 +317,37 @@ describe RuboCop::CLI, :isolated_environment do
                  '  bar',
                  'rescue',
                  '  baz',
+                 'end',
+                 '']
+    expect($stderr.string).to eq('')
+    expect(IO.read('example.rb')).to eq(corrected.join("\n"))
+  end
+
+  it 'corrects UnneededDisable offenses' do
+    source = ['class A',
+              '  # rubocop:disable Metrics/MethodLength',
+              '  def func',
+              '    x = foo # rubocop:disable Lint/UselessAssignment,Style/For',
+              '    bar',
+              '  end',
+              'end',
+              ''].join("\n")
+    create_file('example.rb', source)
+    expect(cli.run(%w(--auto-correct --format simple))).to eq(1)
+    expect($stdout.string)
+      .to eq(['== example.rb ==',
+              'C:  1:  1: Missing top-level class documentation comment.',
+              'W:  2:  3: [Corrected] Unnecessary disabling of ' \
+              'Metrics/MethodLength.',
+              'W:  4: 54: [Corrected] Unnecessary disabling of Style/For.',
+              '',
+              '1 file inspected, 3 offenses detected, 2 offenses corrected',
+              ''].join("\n"))
+    corrected = ['class A',
+                 '  def func',
+                 '    x = foo # rubocop:disable Lint/UselessAssignment',
+                 '    bar',
+                 '  end',
                  'end',
                  '']
     expect($stderr.string).to eq('')
@@ -658,14 +734,6 @@ describe RuboCop::CLI, :isolated_environment do
               'of an array.',
               "#{e}:5:7: C: [Corrected] Use `%w` or `%W` " \
               'for an array of words.',
-              "#{e}:5:8: C: [Corrected] Prefer single-quoted strings " \
-              "when you don't need string interpolation or special " \
-              'symbols.',
-              "#{e}:5:15: C: [Corrected] Prefer single-quoted strings " \
-              "when you don't need string interpolation or special " \
-              'symbols.',
-              "#{e}:5:21: C: [Corrected] Avoid comma after the last item " \
-              'of an array.',
               ''].join("\n"))
   end
 

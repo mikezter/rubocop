@@ -7,7 +7,7 @@ module RuboCop
   class CLI
     include Formatter::TextUtil
 
-    class Finished < Exception; end
+    class Finished < RuntimeError; end
 
     attr_reader :options, :config_store
 
@@ -95,10 +95,10 @@ module RuboCop
         [[formatter, @options[:output_path]]]
       end
 
-      if @options[:auto_gen_config]
-        @options[:formatters] << [Formatter::DisabledConfigFormatter,
-                                  ConfigLoader::AUTO_GENERATED_FILE]
-      end
+      return unless @options[:auto_gen_config]
+
+      @options[:formatters] << [Formatter::DisabledConfigFormatter,
+                                ConfigLoader::AUTO_GENERATED_FILE]
     end
 
     def print_available_cops

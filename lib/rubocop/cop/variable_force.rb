@@ -56,6 +56,18 @@ module RuboCop
 
       SEND_TYPE = :send
 
+      VariableReference = Struct.new(:name) do
+        def assignment?
+          false
+        end
+      end
+
+      AssignmentReference = Struct.new(:node) do
+        def assignment?
+          true
+        end
+      end
+
       def variable_table
         @variable_table ||= VariableTable.new(self)
       end
@@ -159,7 +171,7 @@ module RuboCop
       def process_regexp_named_captures(node)
         regexp_node, rhs_node = *node
 
-        regexp_string = regexp_node.children[0].children[0]
+        regexp_string = regexp_node.children[0].children[0] || ''
         regexp = Regexp.new(regexp_string)
         variable_names = regexp.named_captures.keys
 
@@ -185,7 +197,7 @@ module RuboCop
           asgn_node, _operator, rhs_node = *node
         end
 
-        return unless asgn_node.type == :lvasgn
+        return unless asgn_node.lvasgn_type?
 
         name = asgn_node.children.first
 
@@ -264,7 +276,7 @@ module RuboCop
         if TWISTED_SCOPE_TYPES.include?(node.type)
           # See the comment at the end of file for this behavior.
           twisted_nodes = [node.children[0]]
-          twisted_nodes << node.children[1] if node.type == :class
+          twisted_nodes << node.children[1] if node.class_type?
           twisted_nodes.compact!
 
           twisted_nodes.each do |twisted_node|
@@ -312,23 +324,39 @@ module RuboCop
         referenced_variable_names_in_loop = []
         assignment_nodes_in_loop = []
 
-        # #each_descendant does not consider scope,
-        # but we don't need to care about it here.
-        loop_node.each_descendant do |node|
-          case node.type
-          when :lvar
-            referenced_variable_names_in_loop << node.children.first
-          when :lvasgn
-            assignment_nodes_in_loop << node
-          when *OPERATOR_ASSIGNMENT_TYPES
-            asgn_node = node.children.first
-            if asgn_node.type == :lvasgn
-              referenced_variable_names_in_loop << asgn_node.children.first
-            end
+        each_descendant_reference(loop_node) do |reference|
+          if reference.assignment?
+            assignment_nodes_in_loop << reference.node
+          else
+            referenced_variable_names_in_loop << reference.name
           end
         end
 
         [referenced_variable_names_in_loop, assignment_nodes_in_loop]
+      end
+
+      def each_descendant_reference(loop_node)
+        # #each_descendant does not consider scope,
+        # but we don't need to care about it here.
+        loop_node.each_descendant do |node|
+          reference = descendant_reference(node)
+
+          yield reference if reference
+        end
+      end
+
+      def descendant_reference(node)
+        case node.type
+        when :lvar
+          VariableReference.new(node.children.first)
+        when :lvasgn
+          AssignmentReference.new(node)
+        when *OPERATOR_ASSIGNMENT_TYPES
+          asgn_node = node.children.first
+          if asgn_node.lvasgn_type?
+            VariableReference.new(asgn_node.children.first)
+          end
+        end
       end
 
       # Use Node#equal? for accurate check.

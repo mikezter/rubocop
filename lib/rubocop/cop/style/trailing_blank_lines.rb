@@ -34,11 +34,9 @@ module RuboCop
         def offense_detected(sb, wanted_blank_lines, blank_lines,
                              whitespace_at_end)
           begin_pos = sb.source.length - whitespace_at_end.length
-          autocorrect_range = Parser::Source::Range.new(sb, begin_pos,
-                                                        sb.source.length)
+          autocorrect_range = range_between(begin_pos, sb.source.length)
           begin_pos += 1 unless whitespace_at_end.empty?
-          report_range = Parser::Source::Range.new(sb, begin_pos,
-                                                   sb.source.length)
+          report_range = range_between(begin_pos, sb.source.length)
           add_offense(autocorrect_range, report_range,
                       message(wanted_blank_lines, blank_lines))
         end
@@ -60,7 +58,7 @@ module RuboCop
           when 0
             'Trailing blank line missing.'
           else
-            instead_of = if wanted_blank_lines == 0
+            instead_of = if wanted_blank_lines.zero?
                            ''
                          else
                            "instead of #{wanted_blank_lines} "

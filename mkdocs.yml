@@ -7,12 +7,14 @@ pages:
 - Home: index.md
 - Installation: installation.md
 - Basic Usage: basic_usage.md
+- Cops: cops.md
 - Formatters: formatters.md
 - Configuration: configuration.md
 - Caching: caching.md
 - Extensions: extensions.md
 - Integration with other tools: integration_with_other_tools.md
 - Support: support.md
+- Contributing: contributing.md
 extra_css:
   - css/extra.css
 theme: readthedocs

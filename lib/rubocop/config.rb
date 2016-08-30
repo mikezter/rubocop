@@ -16,7 +16,9 @@ module RuboCop
 
     COMMON_PARAMS = %w(Exclude Include Severity
                        AutoCorrect StyleGuide Details).freeze
-    KNOWN_RUBIES = [1.9, 2.0, 2.1, 2.2, 2.3].freeze
+    # 2.0 is the oldest officially supported Ruby version.
+    DEFAULT_RUBY_VERSION = 2.0
+    KNOWN_RUBIES = [1.9, 2.0, 2.1, 2.2, 2.3, 2.4].freeze
     OBSOLETE_COPS = {
       'Style/TrailingComma' =>
         'The `Style/TrailingComma` cop no longer exists. Please use ' \
@@ -194,6 +196,23 @@ module RuboCop
         end
     end
 
+    def target_ruby_version
+      @target_ruby_version ||=
+        if for_all_cops['TargetRubyVersion']
+          @target_ruby_version_source = :rubocop_yml
+
+          for_all_cops['TargetRubyVersion']
+        elsif File.file?('.ruby-version') &&
+              /\A(ruby-)?(?<version>\d+\.\d+)/ =~ File.read('.ruby-version')
+
+          @target_ruby_version_source = :dot_ruby_version
+
+          version.to_f
+        else
+          DEFAULT_RUBY_VERSION
+        end
+    end
+
     private
 
     def warn_about_unrecognized_cops(invalid_cop_names)
@@ -255,11 +274,11 @@ module RuboCop
     end
 
     def check_obsolete_parameter(cop, parameter, alternative = nil)
-      if self[cop] && self[cop].key?(parameter)
-        raise ValidationError, "obsolete parameter #{parameter} (for #{cop}) " \
-                              "found in #{loaded_path}" \
-                              "#{"\n" if alternative}#{alternative}"
-      end
+      return unless self[cop] && self[cop].key?(parameter)
+
+      raise ValidationError, "obsolete parameter #{parameter} (for #{cop}) " \
+                            "found in #{loaded_path}" \
+                            "#{"\n" if alternative}#{alternative}"
     end
 
     def reject_obsolete_cops
@@ -272,15 +291,21 @@ module RuboCop
     end
 
     def check_target_ruby
-      target = for_all_cops['TargetRubyVersion']
-      return unless target
+      return if KNOWN_RUBIES.include?(target_ruby_version)
 
-      unless KNOWN_RUBIES.include?(target)
-        raise ValidationError, "Unknown Ruby version #{target.inspect} found " \
-                              'in `TargetRubyVersion` parameter (in ' \
-                              "#{loaded_path}).\nKnown versions: " \
-                              "#{KNOWN_RUBIES.join(', ')}"
-      end
+      msg = "Unknown Ruby version #{target_ruby_version.inspect} found "
+
+      msg +=
+        case @target_ruby_version_source
+        when :dot_ruby_version
+          'in `.ruby-version`.'
+        when :rubocop_yml
+          "in `TargetRubyVersion` parameter (in #{loaded_path})." \
+        end
+
+      msg += "\nKnown versions: #{KNOWN_RUBIES.join(', ')}"
+
+      raise ValidationError, msg
     end
   end
 end

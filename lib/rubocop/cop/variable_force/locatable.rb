@@ -45,7 +45,7 @@ module RuboCop
           #   rescue
           #     # resbody
           #   end
-          if branch_point_node.type == :rescue &&
+          if branch_point_node.rescue_type? &&
              (branch_body_name == 'main' || other.branch_body_name == 'main')
             return false
           end
@@ -83,6 +83,7 @@ module RuboCop
           @branch_body_node
         end
 
+        # TODO: Replace case statement with function mapping
         def branch_body_name
           case branch_point_node.type
           when :if                     then if_body_name
@@ -91,11 +92,10 @@ module RuboCop
           when ENSURE_TYPE             then ensure_body_name
           when *LOGICAL_OPERATOR_TYPES then logical_operator_body_name
           when *LOOP_TYPES             then loop_body_name
-          else raise InvalidBranchBodyError
+          else
+            raise InvalidBranchBodyError, "Invalid body index #{body_index} " \
+                                          "of #{branch_point_node.type}"
           end
-        rescue InvalidBranchBodyError
-          raise InvalidBranchBodyError,
-                "Invalid body index #{body_index} of #{branch_point_node.type}"
         end
 
         private
@@ -109,7 +109,7 @@ module RuboCop
         end
 
         def case_body_name
-          if branch_body_node.type == :when
+          if branch_body_node.when_type?
             "when#{body_index - 1}"
           else
             'else'
@@ -124,7 +124,7 @@ module RuboCop
         end
 
         def rescue_body_name
-          if body_index == 0
+          if body_index.zero?
             'main'
           elsif branch_body_node.type == :resbody
             "rescue#{body_index - 1}"
@@ -169,6 +169,7 @@ module RuboCop
           end
         end
 
+        # rubocop:disable Metrics/MethodLength
         def branch?(parent_node, child_node)
           child_index = parent_node.children.index(child_node)
 
@@ -189,6 +190,7 @@ module RuboCop
             false
           end
         end
+        # rubocop:enable Metrics/MethodLength
 
         class InvalidBranchBodyError < StandardError; end
       end

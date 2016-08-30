@@ -39,13 +39,13 @@ module RuboCop
         end
 
         def check_context_dependent(arg, args)
-          braces_around_2nd_from_end = args.length > 1 && args[-2].type == :hash
+          braces_around_second_from_end = args.length > 1 && args[-2].hash_type?
           if braces?(arg)
-            unless braces_around_2nd_from_end
+            unless braces_around_second_from_end
               add_offense(arg.parent, arg.source_range,
                           format(MSG, 'Redundant'))
             end
-          elsif braces_around_2nd_from_end
+          elsif braces_around_second_from_end
             add_offense(arg.parent, arg.source_range, format(MSG, 'Missing'))
           end
         end
@@ -59,26 +59,21 @@ module RuboCop
           node = args.last
           lambda do |corrector|
             if braces?(node)
-              remove_braces(corrector, node)
+              remove_braces_with_whitespace(corrector, node)
             else
               add_braces(corrector, node)
             end
           end
         end
 
-        def remove_braces(corrector, node)
-          comments = processed_source.comments
-          right_brace_and_space = range_with_surrounding_space(node.loc.end,
-                                                               :left)
-          right_brace_and_space =
-            range_with_surrounding_comma(right_brace_and_space, :left)
+        def remove_braces_with_whitespace(corrector, node)
+          right_brace_and_space = right_brace_and_space(node.loc.end)
 
-          if comments.any? { |c| c.loc.line == right_brace_and_space.line }
+          if comment_on_line?(right_brace_and_space.line)
             # Removing a line break between a comment and the closing
             # parenthesis would cause a syntax error, so we only remove the
             # braces in that case.
-            corrector.remove(node.loc.begin)
-            corrector.remove(node.loc.end)
+            remove_braces(corrector, node)
           else
             left_brace_and_space = range_with_surrounding_space(node.loc.begin,
                                                                 :right)
@@ -87,13 +82,27 @@ module RuboCop
           end
         end
 
+        def right_brace_and_space(loc_end)
+          brace_and_space = range_with_surrounding_space(loc_end, :left)
+          range_with_surrounding_comma(brace_and_space, :left)
+        end
+
+        def comment_on_line?(line)
+          processed_source.comments.any? { |c| c.loc.line == line }
+        end
+
+        def remove_braces(corrector, node)
+          corrector.remove(node.loc.begin)
+          corrector.remove(node.loc.end)
+        end
+
         def add_braces(corrector, node)
           corrector.insert_before(node.source_range, '{')
           corrector.insert_after(node.source_range, '}')
         end
 
         def non_empty_hash?(arg)
-          arg && arg.type == :hash && arg.children.any?
+          arg && arg.hash_type? && !arg.children.empty?
         end
 
         def braces?(arg)

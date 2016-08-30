@@ -33,14 +33,23 @@ module RuboCop
           return if ignored_node?(node)
           receiver, method, args = *node
 
-          if method == :!=
-            add_offense(node, :selector) if args == NIL_NODE
-          elsif method == :! && include_semantic_changes?
-            add_offense(node, :expression) if nil_check?(receiver)
+          if not_equal_to_nil?(method, args)
+            add_offense(node, :selector)
+          elsif include_semantic_changes? &&
+                not_and_nil_check?(method, receiver)
+            add_offense(node, :expression)
           end
         end
 
         private
+
+        def not_equal_to_nil?(method, args)
+          method == :!= && args == NIL_NODE
+        end
+
+        def not_and_nil_check?(method, receiver)
+          method == :! && nil_check?(receiver)
+        end
 
         def message(node)
           _receiver, method, _args = *node
@@ -57,18 +66,17 @@ module RuboCop
 
         def on_method_def(_node, name, _args, body)
           # only predicate methods are handled differently
-          return unless name.to_s.end_with?('?')
-          return unless body
+          return unless name.to_s.end_with?('?') && body
 
-          if body.type != :begin
-            ignore_node(body)
-          elsif body.type == :begin
+          if body.begin_type?
             ignore_node(body.children.last)
+          else
+            ignore_node(body)
           end
         end
 
         def nil_check?(node)
-          return false unless node && node.type == :send
+          return false unless node && node.send_type?
 
           _receiver, method, *_args = *node
           method == :nil?

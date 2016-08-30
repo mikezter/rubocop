@@ -42,12 +42,7 @@ module RuboCop
         end
 
         def autocorrect(node)
-          source_buffer = node.loc.keyword.source_buffer
-          begin_pos = node.loc.keyword.begin_pos
-          current_column = node.loc.keyword.column
-          whitespace = Parser::Source::Range.new(source_buffer,
-                                                 begin_pos - current_column,
-                                                 begin_pos)
+          whitespace = whitespace_range(node)
           return false unless whitespace.source.strip.empty?
 
           new_column = ancestor_node(node).loc.end.column
@@ -58,19 +53,29 @@ module RuboCop
 
         def check(node)
           end_loc = ancestor_node(node).loc.end
-          return if end_loc.column == node.loc.keyword.column
-          return if end_loc.line == node.loc.keyword.line
-
           kw_loc = node.loc.keyword
 
-          add_offense(node, kw_loc,
-                      format(MSG, kw_loc.source, kw_loc.line, kw_loc.column,
-                             end_loc.line, end_loc.column))
+          return if end_loc.column == kw_loc.column
+          return if end_loc.line == kw_loc.line
+
+          add_offense(node, kw_loc, format_message(kw_loc, end_loc))
+        end
+
+        def format_message(kw_loc, end_loc)
+          format(MSG, kw_loc.source, kw_loc.line, kw_loc.column, end_loc.line,
+                 end_loc.column)
         end
 
         def modifier?(node)
           return false unless @modifier_locations.respond_to?(:include?)
           @modifier_locations.include?(node.loc.keyword)
+        end
+
+        def whitespace_range(node)
+          begin_pos = node.loc.keyword.begin_pos
+          current_column = node.loc.keyword.column
+
+          range_between(begin_pos - current_column, begin_pos)
         end
 
         def ancestor_node(node)

@@ -24,7 +24,7 @@ module RuboCop
         def on_method_def(_node, _method_name, _args, body)
           return unless body
 
-          expression = if body.type == :begin
+          expression = if body.begin_type?
                          body.children
                        else
                          body
@@ -45,9 +45,9 @@ module RuboCop
         end
 
         def setter_call_to_local_variable?(node)
-          return unless node && node.type == :send
+          return unless node && node.send_type?
           receiver, method, _args = *node
-          return unless receiver && receiver.type == :lvar
+          return unless receiver && receiver.lvar_type?
           method =~ /(?:\w|\[\])=$/
         end
 
@@ -64,19 +64,7 @@ module RuboCop
 
             @local = {}
 
-            scan(@body_node) do |node|
-              case node.type
-              when :masgn
-                process_multiple_assignment(node)
-              when :or_asgn, :and_asgn
-                process_logical_operator_assignment(node)
-              when :op_asgn
-                process_binary_operator_assignment(node)
-              when *ASSIGNMENT_TYPES
-                _, rhs_node = *node
-                process_assignment(node, rhs_node) if rhs_node
-              end
-            end
+            scan(@body_node) { |node| process_assignment_node(node) }
 
             @local[variable_name]
           end
@@ -91,6 +79,20 @@ module RuboCop
             end
           end
 
+          def process_assignment_node(node)
+            case node.type
+            when :masgn
+              process_multiple_assignment(node)
+            when :or_asgn, :and_asgn
+              process_logical_operator_assignment(node)
+            when :op_asgn
+              process_binary_operator_assignment(node)
+            when *ASSIGNMENT_TYPES
+              _, rhs_node = *node
+              process_assignment(node, rhs_node) if rhs_node
+            end
+          end
+
           def process_multiple_assignment(masgn_node)
             mlhs_node, mrhs_node = *masgn_node
 
@@ -100,7 +102,7 @@ module RuboCop
               lhs_variable_name, = *lhs_node
               rhs_node = mrhs_node.children[index]
 
-              if mrhs_node.type == :array && rhs_node
+              if mrhs_node.array_type? && rhs_node
                 process_assignment(lhs_variable_name, rhs_node)
               else
                 @local[lhs_variable_name] = true
@@ -140,7 +142,7 @@ module RuboCop
 
           def constructor?(node)
             return true if node.literal?
-            return false unless node.type == :send
+            return false unless node.send_type?
             _receiver, method = *node
             method == :new
           end

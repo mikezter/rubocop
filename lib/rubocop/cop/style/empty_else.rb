@@ -99,7 +99,7 @@ module RuboCop
 
         def nil_check(node, else_clause)
           return unless else_clause && else_clause.nil_type?
-          add_offense(node, node.location, MSG)
+          add_offense(node, :else, MSG)
         end
 
         def both_check(node, else_clause)
@@ -117,10 +117,7 @@ module RuboCop
                         node.parent.loc.end.begin_pos
                       end
 
-            range = Parser::Source::Range.new(node.source_range.source_buffer,
-                                              node.loc.else.begin_pos,
-                                              end_pos)
-            corrector.remove(range)
+            corrector.remove(range_between(node.loc.else.begin_pos, end_pos))
           end
         end
 

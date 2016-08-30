@@ -39,24 +39,32 @@ module RuboCop
       #
       #   Model.where(id: [1, 2, 3]).to_a.count { |m| m.method == true }
       class Count < Cop
+        include SafeMode
+
         MSG = 'Use `count` instead of `%s...%s`.'.freeze
 
         SELECTORS = [:reject, :select].freeze
         COUNTERS = [:count, :length, :size].freeze
 
         def on_send(node)
-          return unless should_run?
-          selector, selector_loc, params, counter = parse(node)
-          return unless COUNTERS.include?(counter)
-          return unless SELECTORS.include?(selector)
-          return if params && !params.block_pass_type?
-          return if node.parent && node.parent.block_type?
+          return if rails_safe_mode?
 
-          range = Parser::Source::Range.new(node.source_range.source_buffer,
-                                            selector_loc.begin_pos,
-                                            node.source_range.end_pos)
+          @selector, @selector_loc, @params, @counter = parse(node)
 
-          add_offense(node, range, format(MSG, selector, counter))
+          check(node)
+        end
+
+        private
+
+        attr_reader :selector, :selector_loc, :params, :counter
+
+        def check(node)
+          return unless eligible_node?(node) && eligible_params? &&
+                        eligible_method_chain?
+
+          range = source_starting_at(node) { @selector_loc.begin_pos }
+
+          add_offense(node, range, format(MSG, @selector, @counter))
         end
 
         def autocorrect(node)
@@ -64,9 +72,7 @@ module RuboCop
 
           return if selector == :reject
 
-          range = Parser::Source::Range.new(node.source_range.source_buffer,
-                                            node.loc.dot.begin_pos,
-                                            node.source_range.end_pos)
+          range = source_starting_at(node) { |n| n.loc.dot.begin_pos }
 
           lambda do |corrector|
             corrector.remove(range)
@@ -74,36 +80,54 @@ module RuboCop
           end
         end
 
-        private
+        def eligible_node?(node)
+          !(node.parent && node.parent.block_type?)
+        end
 
-        def should_run?
-          !(cop_config['SafeMode'.freeze] ||
-            config['Rails'.freeze] &&
-            config['Rails'.freeze]['Enabled'.freeze])
+        def eligible_params?
+          !(params && !params.block_pass_type?)
+        end
+
+        def eligible_method_chain?
+          COUNTERS.include?(counter) && SELECTORS.include?(selector)
         end
 
         def parse(node)
-          left, counter = *node
-          expression, selector, params = *left
-
-          selector_loc =
-            if selector.is_a?(Symbol)
-              if expression && expression.parent.loc.respond_to?(:selector)
-                expression.parent.loc.selector
-              elsif left.loc.respond_to?(:selector)
-                left.loc.selector
-              end
-            else
-              _enumerable, selector, params = *expression
-
-              expression.loc.selector if contains_selector?(expression)
+          head, counter = *node
+          expression, selector, params = *head
+          if selector.is_a?(Symbol)
+            selector_loc = selector_location(expression, head.loc)
+          else
+            _, selector, params = *expression
+            if contains_selector?(expression)
+              selector_loc = expression.loc.selector
             end
+          end
 
           [selector, selector_loc, params, counter]
         end
 
+        def selector_location(expression, head_loc)
+          if expression && expression.parent.loc.respond_to?(:selector)
+            expression.parent.loc.selector
+          elsif head_loc.respond_to?(:selector)
+            head_loc.selector
+          end
+        end
+
         def contains_selector?(node)
           node.respond_to?(:loc) && node.loc.respond_to?(:selector)
+        end
+
+        def source_starting_at(node)
+          begin_pos =
+            if block_given?
+              yield node
+            else
+              node.source_range.begin_pos
+            end
+
+          range_between(begin_pos, node.source_range.end_pos)
         end
       end
     end

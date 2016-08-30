@@ -7,7 +7,7 @@ module RuboCop
   class Runner # rubocop:disable Metrics/ClassLength
     # An exception indicating that the inspection loop got stuck correcting
     # offenses back and forth.
-    class InfiniteCorrectionLoop < Exception
+    class InfiniteCorrectionLoop < RuntimeError
       attr_reader :offenses
 
       def initialize(path, offenses)
@@ -79,16 +79,7 @@ module RuboCop
       puts "Scanning #{file}" if @options[:debug]
       file_started(file)
 
-      cache = ResultCache.new(file, @options, @config_store) if cached_run?
-      if cache && cache.valid?
-        offenses = cache.load
-      else
-        source = get_processed_source(file)
-        source, offenses = do_inspection_loop(file, source)
-        offenses = add_unneeded_disables(file, offenses.compact.sort, source)
-        save_in_cache(cache, offenses)
-      end
-
+      offenses = file_offenses(file)
       formatter_set.file_finished(file, offenses)
       offenses
     rescue InfiniteCorrectionLoop => e
@@ -96,22 +87,54 @@ module RuboCop
       raise
     end
 
+    def file_offenses(file)
+      file_offense_cache(file) do
+        source = get_processed_source(file)
+        source, offenses = do_inspection_loop(file, source)
+        add_unneeded_disables(file, offenses.compact.sort, source)
+      end
+    end
+
+    def file_offense_cache(file)
+      cache = ResultCache.new(file, @options, @config_store) if cached_run?
+      if cache && cache.valid?
+        offenses = cache.load
+      else
+        offenses = yield
+        save_in_cache(cache, offenses)
+      end
+
+      offenses
+    end
+
     def add_unneeded_disables(file, offenses, source)
-      if source.disabled_line_ranges.any? &&
-         # Don't check unneeded disable if --only or --except option is
-         # given, because these options override configuration.
-         (@options[:except] || []).empty? && (@options[:only] || []).empty?
+      if check_for_unneded_disables?(source)
         config = @config_store.for(file)
         if config.cop_enabled?(Cop::Lint::UnneededDisable)
           cop = Cop::Lint::UnneededDisable.new(config, @options)
           if cop.relevant_file?(file)
             cop.check(offenses, source.disabled_line_ranges, source.comments)
             offenses += cop.offenses
+            autocorrect_unneeded_disables(source, cop)
           end
         end
+        offenses
       end
 
       offenses.sort.reject(&:disabled?).freeze
+    end
+
+    def check_for_unneded_disables?(source)
+      !source.disabled_line_ranges.empty? && !filtered_run?
+    end
+
+    def filtered_run?
+      @options[:except] || @options[:only]
+    end
+
+    def autocorrect_unneeded_disables(source, cop)
+      cop.processed_source = source
+      Cop::Team.new([], nil, @options).autocorrect(source.buffer, [cop])
     end
 
     def file_started(file)
@@ -236,9 +259,9 @@ module RuboCop
 
     def filter_cop_classes(cop_classes, config)
       # use only cops that link to a style guide if requested
-      if style_guide_cops_only?(config)
-        cop_classes.select! { |cop| config.for_cop(cop)['StyleGuide'] }
-      end
+      return unless style_guide_cops_only?(config)
+
+      cop_classes.select! { |cop| config.for_cop(cop)['StyleGuide'] }
     end
 
     def style_guide_cops_only?(config)
@@ -273,7 +296,7 @@ module RuboCop
     end
 
     def get_processed_source(file)
-      ruby_version = @config_store.for(file).for_all_cops['TargetRubyVersion']
+      ruby_version = @config_store.for(file).target_ruby_version
 
       if @options[:stdin]
         ProcessedSource.new(@options[:stdin], ruby_version, file)

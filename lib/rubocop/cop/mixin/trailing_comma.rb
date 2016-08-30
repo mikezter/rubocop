@@ -15,34 +15,45 @@ module RuboCop
       end
 
       def check(node, items, kind, begin_pos, end_pos)
-        sb = node.source_range.source_buffer
-        after_last_item = Parser::Source::Range.new(sb, begin_pos, end_pos)
+        after_last_item = range_between(begin_pos, end_pos)
 
         return if heredoc?(after_last_item.source)
 
         comma_offset = after_last_item.source =~ /,/
 
         if comma_offset && !inside_comment?(after_last_item, comma_offset)
-          unless should_have_comma?(style, node)
-            extra_info = case style
-                         when :comma
-                           ', unless each item is on its own line'
-                         when :consistent_comma
-                           ', unless items are split onto multiple lines'
-                         else
-                           ''
-                         end
-            avoid_comma(kind, after_last_item.begin_pos + comma_offset, sb,
-                        extra_info)
-          end
+          check_comma(node, kind, after_last_item.begin_pos + comma_offset)
         elsif should_have_comma?(style, node)
-          put_comma(node, items, kind, sb)
+          put_comma(node, items, kind)
+        end
+      end
+
+      def check_comma(node, kind, comma_pos)
+        return if should_have_comma?(style, node)
+
+        avoid_comma(kind, comma_pos, extra_avoid_comma_info)
+      end
+
+      def extra_avoid_comma_info
+        case style
+        when :comma
+          ', unless each item is on its own line'
+        when :consistent_comma
+          ', unless items are split onto multiple lines'
+        else
+          ''
         end
       end
 
       def should_have_comma?(style, node)
-        [:comma, :consistent_comma].include?(style) &&
+        case style
+        when :comma
+          multiline?(node) && no_elements_on_same_line?(node)
+        when :consistent_comma
           multiline?(node)
+        else
+          false
+        end
       end
 
       def inside_comment?(range, comma_offset)
@@ -73,13 +84,8 @@ module RuboCop
 
         items = elements(node).map(&:source_range)
         return false if items.empty?
-
-        # If brackets are on different lines and there is one item at least,
-        # then comma is needed anytime for consistent_comma.
-        return true if style == :consistent_comma
-
-        items << node.loc.end
-        items.each_cons(2).all? { |a, b| !on_same_line?(a, b) }
+        items << node.loc.begin << node.loc.end
+        (items.map(&:first_line) + items.map(&:last_line)).uniq.count > 1
       end
 
       def elements(node)
@@ -99,28 +105,32 @@ module RuboCop
         end
       end
 
+      def no_elements_on_same_line?(node)
+        items = elements(node).map(&:source_range)
+        items << node.loc.end
+        items.each_cons(2).none? { |a, b| on_same_line?(a, b) }
+      end
+
       def on_same_line?(a, b)
         a.last_line == b.line
       end
 
-      def avoid_comma(kind, comma_begin_pos, sb, extra_info)
-        range = Parser::Source::Range.new(sb, comma_begin_pos,
-                                          comma_begin_pos + 1)
+      def avoid_comma(kind, comma_begin_pos, extra_info)
+        range = range_between(comma_begin_pos, comma_begin_pos + 1)
         article = kind =~ /array/ ? 'an' : 'a'
         add_offense(range, range,
                     format(MSG, 'Avoid', format(kind, article)) +
                     "#{extra_info}.")
       end
 
-      def put_comma(node, items, kind, sb)
+      def put_comma(node, items, kind)
         last_item = items.last
-        return if last_item.type == :block_pass
+        return if last_item.block_pass_type?
 
         last_expr = last_item.source_range
         ix = last_expr.source.rindex("\n") || 0
         ix += last_expr.source[ix..-1] =~ /\S/
-        range = Parser::Source::Range.new(sb, last_expr.begin_pos + ix,
-                                          last_expr.end_pos)
+        range = range_between(last_expr.begin_pos + ix, last_expr.end_pos)
         autocorrect_range = avoid_autocorrect?(elements(node)) ? nil : range
 
         add_offense(autocorrect_range, range,

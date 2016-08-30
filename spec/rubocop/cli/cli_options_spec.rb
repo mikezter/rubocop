@@ -163,7 +163,7 @@ describe RuboCop::CLI, :isolated_environment do
         # Since we define a new cop class, we have to do this in a separate
         # process. Otherwise, the extra cop will affect other specs.
         output =
-          `ruby -I . #{rubocop} --require redirect.rb --only Style/SomeCop`
+          `ruby -I . "#{rubocop}" --require redirect.rb --only Style/SomeCop`
         expect($CHILD_STATUS.success?).to be_truthy
         expect(output)
           .to eq(['Inspecting 2 files',
@@ -347,11 +347,12 @@ describe RuboCop::CLI, :isolated_environment do
           .to eq(['',
                   # Note: No Lint/UselessAssignment offense.
                   '1  Style/IndentationWidth',
+                  '1  Style/NumericPredicate',
                   '1  Style/SpaceAroundOperators',
                   '1  Style/Tab',
                   '1  Style/TrailingWhitespace',
                   '--',
-                  '4  Total',
+                  '5  Total',
                   '',
                   ''].join("\n"))
       end
@@ -373,7 +374,7 @@ describe RuboCop::CLI, :isolated_environment do
         without_option = $stdout.string
 
         expect(without_option.split($RS) - with_option.split($RS))
-          .to eq(['1  Style/IfUnlessModifier', '5  Total'])
+          .to eq(['1  Style/IfUnlessModifier', '6  Total'])
       end
     end
 

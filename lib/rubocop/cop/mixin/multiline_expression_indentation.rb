@@ -71,7 +71,8 @@ module RuboCop
 
       def incorrect_style_detected(range, node, lhs, rhs)
         add_offense(range, range, message(node, lhs, rhs)) do
-          if offending_range(node, lhs, rhs, alternative_style)
+          if supported_styles.size > 2 ||
+             offending_range(node, lhs, rhs, alternative_style)
             unrecognized_style_detected
           else
             opposite_style_detected
@@ -130,15 +131,23 @@ module RuboCop
           when :block
             break if part_of_block_body?(candidate, a)
           when :send
-            _receiver, method_name, *args = *a
-
-            # The []= operator and setters (a.b = c) are parsed as :send nodes.
-            assignment_call?(method_name) &&
-              (!candidate || within_node?(candidate, args.last))
+            valid_method_rhs_candidate?(candidate, a)
           when *Util::ASGN_NODES
-            !candidate || within_node?(candidate, assignment_rhs(a))
+            valid_rhs_candidate?(candidate, assignment_rhs(a))
           end
         end
+      end
+
+      # The []= operator and setters (a.b = c) are parsed as :send nodes.
+      def valid_method_rhs_candidate?(candidate, node)
+        _receiver, method_name, *args = *node
+
+        assignment_call?(method_name) &&
+          valid_rhs_candidate?(candidate, args.last)
+      end
+
+      def valid_rhs_candidate?(candidate, node)
+        !candidate || within_node?(candidate, node)
       end
 
       def assignment_call?(method_name)
@@ -168,12 +177,12 @@ module RuboCop
       end
 
       def grouped_expression?(node)
-        node.type == :begin && node.loc.respond_to?(:begin) && node.loc.begin
+        node.begin_type? && node.loc.respond_to?(:begin) && node.loc.begin
       end
 
       def inside_arg_list_parentheses?(node, ancestor)
         a = ancestor.loc
-        return false unless ancestor.type == :send && a.begin &&
+        return false unless ancestor.send_type? && a.begin &&
                             a.begin.is?('(')
         n = node.source_range
         n.begin_pos > a.begin.begin_pos && n.end_pos < a.end.end_pos

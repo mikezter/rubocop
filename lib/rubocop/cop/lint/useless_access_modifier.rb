@@ -56,6 +56,29 @@ module RuboCop
       #     def self.method3
       #     end
       #   end
+      #
+      # @example
+      #   # Lint/UselessAccessModifier:
+      #   #   ContextCreatingMethods:
+      #   #     - concerning
+      #   require 'active_support/concern'
+      #   class Foo
+      #     concerning :Bar do
+      #       def some_public_method
+      #       end
+      #
+      #       private
+      #
+      #       def some_private_method
+      #       end
+      #     end
+      #
+      #     # this is not redundant because `concerning` created its own context
+      #     private
+      #
+      #     def some_other_private_method
+      #     end
+      #   end
       class UselessAccessModifier < Cop
         MSG = 'Useless `%s` access modifier.'.freeze
 
@@ -68,7 +91,7 @@ module RuboCop
         end
 
         def on_block(node)
-          return unless instance_eval_or_new_call?(node)
+          return unless eval_call?(node)
 
           check_node(node.children[2]) # block body
         end
@@ -118,17 +141,8 @@ module RuboCop
         def check_child_nodes(node, unused, cur_vis)
           node.child_nodes.each do |child|
             if (new_vis = access_modifier(child))
-              # does this modifier just repeat the existing visibility?
-              if new_vis == cur_vis
-                add_offense(child, :expression, format(MSG, cur_vis))
-              else
-                # was the previous modifier never applied to any defs?
-                add_offense(unused, :expression, format(MSG, cur_vis)) if unused
-                # once we have already warned about a certain modifier, don't
-                # warn again even if it is never applied to any method defs
-                unused = child
-              end
-              cur_vis = new_vis
+              cur_vis, unused =
+                check_new_visibility(child, unused, new_vis, cur_vis)
             elsif method_definition?(child)
               unused = nil
             elsif start_of_new_scope?(child)
@@ -141,18 +155,47 @@ module RuboCop
           [cur_vis, unused]
         end
 
+        def check_new_visibility(node, unused, new_vis, cur_vis)
+          # does this modifier just repeat the existing visibility?
+          if new_vis == cur_vis
+            add_offense(node, :expression, format(MSG, cur_vis))
+          else
+            # was the previous modifier never applied to any defs?
+            add_offense(unused, :expression, format(MSG, cur_vis)) if unused
+            # once we have already warned about a certain modifier, don't
+            # warn again even if it is never applied to any method defs
+            unused = node
+          end
+
+          [new_vis, unused]
+        end
+
         def method_definition?(child)
           static_method_definition?(child) || dynamic_method_definition?(child)
         end
 
         def start_of_new_scope?(child)
           child.module_type? || child.class_type? ||
-            child.sclass_type? || instance_eval_or_new_call?(child)
+            child.sclass_type? || eval_call?(child)
         end
 
-        def instance_eval_or_new_call?(child)
+        def eval_call?(child)
           class_or_instance_eval?(child) ||
-            class_or_module_or_struct_new_call?(child)
+            class_or_module_or_struct_new_call?(child) ||
+            any_context_creating_methods?(child)
+        end
+
+        def any_context_creating_methods?(child)
+          cop_config.fetch('ContextCreatingMethods', []).any? do |m|
+            matcher_name = "#{m}_block?".to_sym
+            unless respond_to?(matcher_name)
+              self.class.def_node_matcher matcher_name, <<-PATTERN
+                (block (send {nil const} {:#{m}} ...) ...)
+              PATTERN
+            end
+
+            send(matcher_name, child)
+          end
         end
       end
     end

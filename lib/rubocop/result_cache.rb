@@ -24,8 +24,20 @@ module RuboCop
       return unless File.exist?(cache_root)
 
       files, dirs = Find.find(cache_root).partition { |path| File.file?(path) }
-      if files.length > config_store.for('.').for_all_cops['MaxFilesInCache'] &&
-         files.length > 1
+      return unless requires_file_removal?(files.length, config_store)
+
+      remove_oldest_files(files, dirs, cache_root, verbose)
+    end
+
+    class << self
+      private
+
+      def requires_file_removal?(file_count, config_store)
+        file_count > 1 &&
+          file_count > config_store.for('.').for_all_cops['MaxFilesInCache']
+      end
+
+      def remove_oldest_files(files, dirs, cache_root, verbose)
         # Add 1 to half the number of files, so that we remove the file if
         # there's only 1 left.
         remove_count = 1 + files.length / 2
@@ -35,13 +47,13 @@ module RuboCop
         sorted = files.sort_by { |path| File.mtime(path) }
         remove_files(sorted, dirs, remove_count, verbose)
       end
-    end
-
-    class << self
-      private
 
       def remove_files(files, dirs, remove_count, verbose)
-        File.delete(*files[0, remove_count])
+        # Batch file deletions, deleting over 130,000+ files will crash
+        # File.delete.
+        files[0, remove_count].each_slice(10_000).each do |files_slice|
+          File.delete(*files_slice)
+        end
         dirs.each { |dir| Dir.rmdir(dir) if Dir["#{dir}/*"].empty? }
       rescue Errno::ENOENT
         # This can happen if parallel RuboCop invocations try to remove the
@@ -60,8 +72,14 @@ module RuboCop
       File.join(root, 'rubocop_cache')
     end
 
+    def self.allow_symlinks_in_cache_location?(config_store)
+      config_store.for('.').for_all_cops['AllowSymlinksInCacheRootDirectory']
+    end
+
     def initialize(file, options, config_store, cache_root = nil)
       cache_root ||= ResultCache.cache_root(config_store)
+      @allow_symlinks_in_cache_location =
+        ResultCache.allow_symlinks_in_cache_location?(config_store)
       @path = File.join(cache_root, rubocop_checksum,
                         relevant_options_digest(options),
                         file_checksum(file, config_store))
@@ -81,9 +99,9 @@ module RuboCop
       FileUtils.mkdir_p(dir)
       preliminary_path = "#{@path}_#{rand(1_000_000_000)}"
       # RuboCop must be in control of where its cached data is stored. A
-      # symbolic link anywhere in the cache directory tree is an indication
-      # that a symlink attack is being waged.
-      return if any_symlink?(dir)
+      # symbolic link anywhere in the cache directory tree can be an
+      # indication that a symlink attack is being waged.
+      return if symlink_protection_triggered?(dir)
 
       File.open(preliminary_path, 'wb') do |f|
         f.write(@cached_data.to_json(offenses))
@@ -97,6 +115,10 @@ module RuboCop
     end
 
     private
+
+    def symlink_protection_triggered?(path)
+      !@allow_symlinks_in_cache_location && any_symlink?(path)
+    end
 
     def any_symlink?(path)
       while path != File.dirname(path)

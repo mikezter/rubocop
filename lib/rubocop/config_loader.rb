@@ -33,12 +33,6 @@ module RuboCop
       def load_file(path)
         path = File.absolute_path(path)
         hash = load_yaml_configuration(path)
-
-        resolve_inheritance_from_gems(hash, hash.delete('inherit_gem'))
-        resolve_inheritance(path, hash)
-        resolve_requires(path, hash)
-
-        hash.delete('inherit_from')
         config = Config.new(hash, path)
 
         config.deprecation_check do |deprecation_message|
@@ -46,6 +40,13 @@ module RuboCop
         end
 
         config.add_missing_namespaces
+
+        resolve_inheritance_from_gems(config, config.delete('inherit_gem'))
+        resolve_inheritance(path, config)
+        resolve_requires(path, config)
+
+        config.delete('inherit_from')
+
         config.validate
         config.make_excludes_absolute
         config
@@ -139,14 +140,9 @@ module RuboCop
       end
 
       def load_yaml_configuration(absolute_path)
-        yaml_code = IO.read(absolute_path)
-        # At one time, there was a problem with the psych YAML engine under
-        # Ruby 1.9.3. YAML.load_file would crash when reading empty .yml files
-        # or files that only contained comments and blank lines. This problem
-        # is not possible to reproduce now, but we want to avoid it in case
-        # it's still there. So we only load the YAML code if we find some real
-        # code in there.
-        hash = yaml_code =~ /^[A-Z]/i ? yaml_safe_load(yaml_code) : {}
+        yaml_code = IO.read(absolute_path, encoding: 'UTF-8')
+        hash = yaml_safe_load(yaml_code, absolute_path) || {}
+
         puts "configuration from #{absolute_path}" if debug?
 
         unless hash.is_a?(Hash)
@@ -156,15 +152,16 @@ module RuboCop
         hash
       end
 
-      def yaml_safe_load(yaml_code)
+      def yaml_safe_load(yaml_code, filename)
         if YAML.respond_to?(:safe_load) # Ruby 2.1+
           if defined?(SafeYAML) && SafeYAML.respond_to?(:load)
-            SafeYAML.load(yaml_code, nil, whitelisted_tags: %w(!ruby/regexp))
+            SafeYAML.load(yaml_code, filename,
+                          whitelisted_tags: %w(!ruby/regexp))
           else
-            YAML.safe_load(yaml_code, [Regexp])
+            YAML.safe_load(yaml_code, [Regexp], [], false, filename)
           end
         else
-          YAML.load(yaml_code)
+          YAML.load(yaml_code, filename)
         end
       end
 
