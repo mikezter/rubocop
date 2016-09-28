@@ -26,6 +26,19 @@ describe RuboCop::Cop::Style::MultilineMethodCallBraceLayout, :config do
     expect(cop.offenses).to be_empty
   end
 
+  it 'ignores calls with an empty brace' do
+    inspect_source(cop, 'puts()')
+
+    expect(cop.offenses).to be_empty
+  end
+
+  it 'ignores calls with a multiline empty brace ' do
+    inspect_source(cop, ['puts(',
+                         ')'])
+
+    expect(cop.offenses).to be_empty
+  end
+
   include_examples 'multiline literal brace layout' do
     let(:open) { 'foo(' }
     let(:close) { ')' }
@@ -41,6 +54,19 @@ describe RuboCop::Cop::Style::MultilineMethodCallBraceLayout, :config do
 
     it 'still ignores single-line calls' do
       inspect_source(cop, 'puts("Hello world!")')
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'ignores single-line calls with multi-line receiver' do
+      inspect_source(cop, ['[',
+                           '].join(" ")'])
+      expect(cop.offenses).to be_empty
+    end
+
+    it 'ignores single-line calls with multi-line receiver with leading dot' do
+      inspect_source(cop, ['[',
+                           ']',
+                           '.join(" ")'])
       expect(cop.offenses).to be_empty
     end
   end

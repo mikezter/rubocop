@@ -34,7 +34,7 @@ module RuboCop
     private
 
     def args_from_file
-      if File.exist?('.rubocop')
+      if File.exist?('.rubocop') && !File.directory?('.rubocop')
         IO.readlines('.rubocop').map(&:strip)
       else
         []
@@ -145,7 +145,7 @@ module RuboCop
 
       option(opts, '-v', '--version')
       option(opts, '-V', '--verbose-version')
-      option(opts, '-s', '--stdin') { @options[:stdin] = $stdin.read }
+      option(opts, '-s', '--stdin') { @options[:stdin] = $stdin.binmode.read }
     end
 
     def add_list_options(opts)

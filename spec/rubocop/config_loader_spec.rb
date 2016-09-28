@@ -84,7 +84,7 @@ describe RuboCop::ConfigLoader do
       it 'returns a configuration inheriting from default.yml' do
         config = default_config['Style/Encoding'].dup
         config['Enabled'] = false
-        expect(configuration_from_file)
+        expect(configuration_from_file.to_h)
           .to eql(default_config.merge('Style/Encoding' => config))
       end
     end
@@ -195,8 +195,7 @@ describe RuboCop::ConfigLoader do
             'Metrics/LineLength' => {
               'Description' =>
               default_config['Metrics/LineLength']['Description'],
-              'StyleGuide' =>
-              'https://github.com/bbatsov/ruby-style-guide#80-character-limits',
+              'StyleGuide' => '#80-character-limits',
               'Enabled' => true,
               'Max' => 77,
               'AllowHeredoc' => true,
@@ -206,14 +205,13 @@ describe RuboCop::ConfigLoader do
             'Metrics/MethodLength' => {
               'Description' =>
               default_config['Metrics/MethodLength']['Description'],
-              'StyleGuide' =>
-              'https://github.com/bbatsov/ruby-style-guide#short-methods',
+              'StyleGuide' => '#short-methods',
               'Enabled' => true,
               'CountComments' => false,
               'Max' => 5
             }
           )
-        expect(configuration_from_file).to eq(config)
+        expect(configuration_from_file.to_h).to eq(config)
       end
     end
 
@@ -276,8 +274,7 @@ describe RuboCop::ConfigLoader do
             'Metrics/LineLength' => {
               'Description' =>
               default_config['Metrics/LineLength']['Description'],
-              'StyleGuide' =>
-              'https://github.com/bbatsov/ruby-style-guide#80-character-limits',
+              'StyleGuide' => '#80-character-limits',
               'Enabled' => true,
               'Max' => 120,             # overridden in line_length.yml
               'AllowHeredoc' => false,  # overridden in rubocop.yml
@@ -286,7 +283,7 @@ describe RuboCop::ConfigLoader do
             }
           )
 
-        expect(configuration_from_file).to eq(config)
+        expect(configuration_from_file.to_h).to eq(config)
       end
     end
 
@@ -335,33 +332,56 @@ describe RuboCop::ConfigLoader do
       let(:file_path) { '.rubocop.yml' }
 
       before do
-        create_file('somegemname/config/rubocop.yml',
+        create_file('gemone/config/rubocop.yml',
                     ['Metrics/MethodLength:',
                      '  Enabled: false',
                      '  Max: 200',
                      '  CountComments: false'])
+        create_file('gemtwo/config/default.yml',
+                    ['Metrics/LineLength:',
+                     '  Enabled: true'])
+        create_file('gemtwo/config/strict.yml',
+                    ['Metrics/LineLength:',
+                     '  Max: 72',
+                     '  AllowHeredoc: false'])
         create_file('local.yml',
                     ['Metrics/MethodLength:',
                      '  CountComments: true'])
         create_file(file_path,
                     ['inherit_gem:',
-                     '  somegemname: config/rubocop.yml',
+                     '  gemone: config/rubocop.yml',
+                     '  gemtwo:',
+                     '    - config/default.yml',
+                     '    - config/strict.yml',
                      '',
                      'inherit_from: local.yml',
                      '',
                      'Metrics/MethodLength:',
-                     '  Enabled: true'])
+                     '  Enabled: true',
+                     '',
+                     'Metrics/LineLength:',
+                     '  AllowURI: false'])
       end
 
       it 'returns values from the gem config with local overrides' do
-        mock_spec = Struct.new(:gem_dir).new('somegemname')
-        expect(Gem::Specification).to receive(:find_by_name)
-          .at_least(:once).with('somegemname').and_return(mock_spec)
+        gem_class = Struct.new(:gem_dir)
+        %w(gemone gemtwo).each do |gem_name|
+          mock_spec = gem_class.new(gem_name)
+          expect(Gem::Specification).to receive(:find_by_name)
+            .at_least(:once).with(gem_name).and_return(mock_spec)
+        end
 
         expected = { 'Enabled' => true,        # overridden in .rubocop.yml
                      'CountComments' => true,  # overridden in local.yml
                      'Max' => 200 }            # inherited from somegem
         expect(configuration_from_file['Metrics/MethodLength'].to_set)
+          .to be_superset(expected.to_set)
+
+        expected = { 'Enabled' => true,        # gemtwo/config/default.yml
+                     'Max' => 72,              # gemtwo/config/strict.yml
+                     'AllowHeredoc' => false,  # gemtwo/config/strict.yml
+                     'AllowURI' => false }     # overridden in .rubocop.yml
+        expect(configuration_from_file['Metrics/LineLength'].to_set)
           .to be_superset(expected.to_set)
       end
     end
@@ -430,13 +450,13 @@ describe RuboCop::ConfigLoader do
                                        'Style/Encoding:',
                                        '  Enabled: false'])
 
-      expect(load_file).to eq('Style/Encoding' => { 'Enabled' => false })
+      expect(load_file.to_h).to eq('Style/Encoding' => { 'Enabled' => false })
     end
 
     it 'returns an empty configuration loaded from an empty file' do
       create_file(configuration_path, '')
       configuration = load_file
-      expect(configuration).to eq({})
+      expect(configuration.to_h).to eq({})
     end
 
     context 'when SafeYAML is required' do

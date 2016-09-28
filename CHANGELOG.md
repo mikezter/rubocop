@@ -4,14 +4,44 @@
 
 ### New features
 
+* [#3510](https://github.com/bbatsov/rubocop/issues/3510): Add a configuration option, `ConvertCodeThatCanStartToReturnNil`, to `Style/SafeNavigation` to check for code that could start returning `nil` if safe navigation is used. ([@rrosenblum][])
+* Add a new `AllCops/StyleGuideBaseURL` setting that allows the use of relative paths and/or fragments within each cop's `StyleGuide` setting, to make forking of custom style guides easier. ([@scottmatthewman][])
+
+### Bug fixes
+
+* [#3513](https://github.com/bbatsov/rubocop/pull/3513): Fix false positive in `Style/TernaryParentheses` for a ternary with ranges. ([@dreyks][])
+* [#3520](https://github.com/bbatsov/rubocop/issues/3520): Fix regression causing `Lint/AssignmentInCondition` false positive. ([@savef][])
+* [#3514](https://github.com/bbatsov/rubocop/issues/3514): Make `Style/VariableNumber` cop not register an offense when valid normal case variable names have an integer after the first `_`. ([@b-t-g][])
+* [#3516](https://github.com/bbatsov/rubocop/issues/3516): Make `Style/VariableNumber` cop not register an offense when valid normal case variable names have an integer in the middle. ([@b-t-g][])
+* [#3436](https://github.com/bbatsov/rubocop/issues/3436): Make `Rails/SaveBang` cop not register an offense when return value of a non-bang method is returned by the parent method. ([@coorasse][])
+* [#3540](https://github.com/bbatsov/rubocop/issues/3540): Fix `Style/GuardClause` to register offense for instance and singleton methods. ([@tejasbubane][])
+
+### Changes
+
+* [#3512](https://github.com/bbatsov/rubocop/issues/3512): Change error message of `Lint/UnneededSplatExpansion` for array in method parameters. ([@tejasbubane][])
+* [#3510](https://github.com/bbatsov/rubocop/issues/3510): Fix some issues with `Style/SafeNavigation`. Fix auto-correct of multiline if expressions, and do not register an offense for scenarios using `||` and ternary expression. ([@rrosenblum][])
+
+## 0.43.0 (2016-09-19)
+
+### New features
+
+* [#3379](https://github.com/bbatsov/rubocop/issues/3379): Add table of contents at the beginning of HTML formatted output. ([@hedgesky][])
 * [#2968](https://github.com/bbatsov/rubocop/issues/2968): Add new `Style/DocumentationMethod` cop. ([@sooyang][])
 * [#3360](https://github.com/bbatsov/rubocop/issues/3360): Add `RequireForNonPublicMethods` configuration option to `Style/DocumentationMethod` cop. ([@drenmi][])
 * Add new `Rails/SafeNavigation` cop to convert `try!` to `&.`. ([@rrosenblum][])
 * [#3415](https://github.com/bbatsov/rubocop/pull/3415): Add new `Rails/NotNullColumn` cop. ([@pocke][])
 * [#3167](https://github.com/bbatsov/rubocop/issues/3167): Add new `Style/VariableNumber` cop. ([@sooyang][])
+* Add new style `no_mixed_keys` to `Style/HashSyntax` to only check for hashes with mixed keys. ([@daviddavis][])
+* Allow including multiple configuration files from a single gem. ([@tjwallace][])
+* Add check for `persisted?` method call when using a create method in `Rails/SaveBang`. ([@QuinnHarris][])
+* Add new `Style/SafeNavigation` cop to convert method calls safeguarded by a non `nil` check for the object to `&.`. ([@rrosenblum][])
+* Add new `Performance/SortWithBlock` cop to use `sort_by(&:foo)` instead of `sort_by { |a, b| a.foo <=> b.foo }`. ([@koic][])
+* [#3492](https://github.com/bbatsov/rubocop/pull/3492): Add new `UnifiedInteger` cop. ([@pocke][])
 
 ### Bug fixes
 
+* [#3383](https://github.com/bbatsov/rubocop/issues/3383): Fix the local variable reset issue with `Style/RedundantSelf` cop. ([@bankair][])
+* [#3445](https://github.com/bbatsov/rubocop/issues/3445): Fix bad autocorrect for `Style/AndOr` cop. ([@mikezter][])
 * [#3349](https://github.com/bbatsov/rubocop/issues/3349): Fix bad autocorrect for `Style/Lambda` cop. ([@metcalf][])
 * [#3351](https://github.com/bbatsov/rubocop/issues/3351): Fix bad auto-correct for `Performance/RedundantMatch` cop. ([@annaswims][])
 * [#3347](https://github.com/bbatsov/rubocop/issues/3347): Prevent infinite loop in `Style/TernaryParentheses` cop when used together with `Style/RedundantParentheses`. ([@drenmi][])
@@ -27,13 +57,24 @@
 * [#3425](https://github.com/bbatsov/rubocop/pull/3425): Fix bug for invalid bytes in UTF-8 in `Lint/PercentStringArray` cop. ([@pocke][])
 * [#3374](https://github.com/bbatsov/rubocop/issues/3374): Make `SpaceInsideBlockBraces` and `SpaceBeforeBlockBraces` not depend on `BlockDelimiters` configuration. ([@jonas054][])
 * Fix error in `Lint/ShadowedException` cop for higher number of rescue groups. ([@groddeck][])
-[@groddeck]: https://github.com/groddeck
+* [#3456](https://github.com/bbatsov/rubocop/pull/3456): Don't crash on a multiline empty brace in `Style/MultilineMethodCallBraceLayout`. ([@pocke][])
+* [#3423](https://github.com/bbatsov/rubocop/issues/3423): Checks if .rubocop is a file before parsing. ([@joejuzl][])
+* [#3439](https://github.com/bbatsov/rubocop/issues/3439): Fix variable assignment check not working properly when a block is used in `Rails/SaveBang`. ([@QuinnHarris][])
+* [#3401](https://github.com/bbatsov/rubocop/issues/3401): Read file contents in binary mode so `Style/EndOfLine` works on Windows. ([@jonas054][])
+* [#3450](https://github.com/bbatsov/rubocop/issues/3450): Prevent `Style/TernaryParentheses` cop from making unsafe corrections. ([@drenmi][])
+* [#3460](https://github.com/bbatsov/rubocop/issues/3460): Fix false positives in `Style/InlineComment` cop. ([@drenmi][])
+* [#3485](https://github.com/bbatsov/rubocop/issues/3485): Make OneLineConditional cop not register offense for empty else. ([@tejasbubane][])
+* [#3508](https://github.com/bbatsov/rubocop/pull/3508): Fix false negatives in `Rails/NotNullColumn`. ([@pocke][])
+* [#3462](https://github.com/bbatsov/rubocop/issues/3462): Don't create MultilineMethodCallBraceLayout offenses for single-line method calls when receiver spans multiple lines. ([@maxjacobson][])
 
 ### Changes
 
 * [#3341](https://github.com/bbatsov/rubocop/issues/3341): Exclude RSpec tests from inspection by `Style/NumericPredicate` cop. ([@drenmi][])
 * Rename `Lint/UselessArraySplat` to `Lint/UnneededSplatExpansion`, and add functionality to check for unnecessary expansion of other literals. ([@rrosenblum][])
 * No longer register an offense for splat expansion of an array literal in `Performance/CaseWhenSplat`. `Lint/UnneededSplatExpansion` now handles this behavior. ([@rrosenblum][])
+* `Lint/InheritException` restricts inheriting from standard library subclasses of `Exception`. ([@metcalf][])
+* No longer register an offense if the first line of code starts with `#\` in `Style/LeadingCommentSpace`. `config.ru` files consider such lines as options. ([@scottohara][])
+* [#3292](https://github.com/bbatsov/rubocop/issues/3292): Remove `Performance/PushSplat` as it can produce code that is slower or even cause failure. ([@jonas054][])
 
 ## 0.42.0 (2016-07-25)
 
@@ -2334,3 +2375,13 @@
 [@annaswims]: https://github.com/annaswims
 [@soutaro]: https://github.com/soutaro
 [@nicklamuro]: https://github.com/nicklamuro
+[@mikezter]: https://github.com/mikezter
+[@joejuzl]: https://github.com/joejuzl
+[@hedgesky]: https://github.com/hedgesky
+[@tjwallace]: https://github.com/tjwallace
+[@scottohara]: https://github.com/scottohara
+[@koic]: https://github.com/koic
+[@groddeck]: https://github.com/groddeck
+[@b-t-g]: https://github.com/b-t-g
+[@coorasse]: https://github.com/coorasse
+[@scottmatthewman]: https://github.com/scottmatthewman

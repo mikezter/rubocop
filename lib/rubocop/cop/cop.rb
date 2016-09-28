@@ -1,5 +1,6 @@
 # encoding: utf-8
 # frozen_string_literal: true
+require 'uri'
 
 module RuboCop
   module Cop
@@ -24,6 +25,8 @@ module RuboCop
 
       def qualified_cop_name(name, origin)
         @cop_names ||= Set.new(map(&:cop_name))
+        return name if @cop_names.include?(name)
+
         basename = File.basename(name)
         found_ns = types.map(&:capitalize).select do |ns|
           @cop_names.include?("#{ns}/#{basename}")
@@ -33,8 +36,9 @@ module RuboCop
         when 0 then name # No namespace found. Deal with it later in caller.
         when 1 then cop_name_with_namespace(name, origin, basename, found_ns[0])
         else raise AmbiguousCopName,
-                   "Ambiguous cop name `#{basename}` used in" \
-                   "#{origin} needs namespace qualifier."
+                   "Ambiguous cop name `#{name}` used in #{origin} needs " \
+                   'namespace qualifier. Did you mean ' \
+                   "#{found_ns.map { |ns| "#{ns}/#{basename}" }.join(' or ')}"
         end
       end
 
@@ -225,7 +229,12 @@ module RuboCop
 
       def style_guide_url
         url = cop_config['StyleGuide']
-        url.nil? || url.empty? ? nil : url
+        return nil if url.nil? || url.empty?
+
+        base_url = config.for_all_cops['StyleGuideBaseURL']
+        return url if base_url.nil? || base_url.empty?
+
+        URI.join(base_url, url).to_s
       end
 
       def reference_url

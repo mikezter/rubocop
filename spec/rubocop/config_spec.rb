@@ -254,7 +254,6 @@ describe RuboCop::Config do
       configuration.patterns_to_include
     end
 
-    let(:hash) { {} }
     let(:loaded_path) { 'example/.rubocop.yml' }
 
     context 'when config file has AllCops => Include key' do
@@ -275,13 +274,46 @@ describe RuboCop::Config do
     end
   end
 
+  describe '#possibly_include_hidden?' do
+    subject(:configuration) do
+      described_class.new(hash, loaded_path)
+    end
+
+    let(:loaded_path) { 'example/.rubocop.yml' }
+
+    it 'returns true when Include config only includes regular paths' do
+      configuration['AllCops'] = {
+        'Include' => ['**/Gemfile', 'config/unicorn.rb.example']
+      }
+
+      expect(configuration.possibly_include_hidden?).to be(false)
+    end
+
+    it 'returns true when Include config includes a regex' do
+      configuration['AllCops'] = { 'Include' => [/foo/] }
+
+      expect(configuration.possibly_include_hidden?).to be(true)
+    end
+
+    it 'returns true when Include config includes a toplevel dotfile' do
+      configuration['AllCops'] = { 'Include' => ['.foo'] }
+
+      expect(configuration.possibly_include_hidden?).to be(true)
+    end
+
+    it 'returns true when Include config includes a dotfile in a path' do
+      configuration['AllCops'] = { 'Include' => ['foo/.bar'] }
+
+      expect(configuration.possibly_include_hidden?).to be(true)
+    end
+  end
+
   describe '#patterns_to_exclude' do
     subject(:patterns_to_exclude) do
       configuration = described_class.new(hash, loaded_path)
       configuration.patterns_to_exclude
     end
 
-    let(:hash) { {} }
     let(:loaded_path) { 'example/.rubocop.yml' }
 
     context 'when config file has AllCops => Exclude key' do
@@ -467,8 +499,6 @@ describe RuboCop::Config do
       end
 
       context 'when .ruby-version is not present' do
-        let(:ruby_version) { described_class::DEFAULT_RUBY_VERSION }
-
         before do
           allow(File).to receive(:file?).with('.ruby-version').and_return false
         end

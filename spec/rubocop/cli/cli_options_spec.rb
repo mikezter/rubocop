@@ -626,12 +626,11 @@ describe RuboCop::CLI, :isolated_environment do
       let(:cop_list) { ['Style/Tab'] }
 
       it 'prints that cop and nothing else' do
-        expect(stdout).to eq(
+        expect(stdout).to match(
           ['# Supports --auto-correct',
            'Style/Tab:',
            '  Description: No hard tabs.',
-           '  StyleGuide: ' \
-           'https://github.com/bbatsov/ruby-style-guide#spaces-indentation',
+           /^  StyleGuide: ('|")#spaces-indentation('|")$/,
            '  Enabled: true',
            '',
            ''].join("\n")
@@ -650,12 +649,11 @@ describe RuboCop::CLI, :isolated_environment do
       let(:cop_list) { ['Style/Tab,Lint/X123'] }
 
       it 'skips the unknown cop' do
-        expect(stdout).to eq(
+        expect(stdout).to match(
           ['# Supports --auto-correct',
            'Style/Tab:',
            '  Description: No hard tabs.',
-           '  StyleGuide: ' \
-           'https://github.com/bbatsov/ruby-style-guide#spaces-indentation',
+           /^  StyleGuide: ('|")#spaces-indentation('|")$/,
            '  Enabled: true',
            '',
            ''].join("\n")
@@ -1113,6 +1111,32 @@ describe RuboCop::CLI, :isolated_environment do
           '====================',
           'p $INPUT_RECORD_SEPARATOR'
         ].join("\n"))
+      ensure
+        $stdin = STDIN
+      end
+    end
+
+    it 'detects CR at end of line' do
+      begin
+        create_file('example.rb', "puts 'hello world'\r")
+        File.open('example.rb') do |file|
+          # We must use a File object to simulate the behavior of
+          # STDIN, which is an IO object. StringIO won't do in this
+          # case, as its read() method doesn't handle line endings the
+          # same way IO#read() does.
+          $stdin = file
+          argv = ['--only=Style/EndOfLine',
+                  '--format=simple',
+                  '--stdin',
+                  'fake.rb']
+          expect(cli.run(argv)).to eq(1)
+          expect($stdout.string)
+            .to eq(['== fake.rb ==',
+                    'C:  1:  1: Carriage return character detected.',
+                    '',
+                    '1 file inspected, 1 offense detected',
+                    ''].join("\n"))
+        end
       ensure
         $stdin = STDIN
       end
